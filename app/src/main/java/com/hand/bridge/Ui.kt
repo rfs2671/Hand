@@ -204,6 +204,8 @@ fun Context.listRow(
     title: String, sub: String? = null, icon: Glyph.Shape? = null, iconColor: Int = Ui.p.accent,
     trailing: View? = null, onClick: (() -> Unit)? = null
 ) = hbox {
+    // Full width: without this the row sizes to its content and the title column collapses to 0.
+    layoutParams = lp()
     setPadding(Ui.dp(4), Ui.dp(12), Ui.dp(4), Ui.dp(12))
     if (icon != null) {
         val tile = FrameLayout(context).apply {

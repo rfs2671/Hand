@@ -398,8 +398,8 @@ class MainActivity : Activity() {
         }, lp().margins(t = 6))
     }
 
-    private fun addDevice() {
-        if (!hasBt()) { requestPerms(); return }
+    private fun addDevice() = safely("Opening Add device") {
+        if (!hasBt()) { requestPerms(); return@safely }
         sheet("Add a device", listOf(
             Triple("Search nearby", "Put the device in Bluetooth pairing mode first", Glyph.Shape.SEARCH) to { associate(null) },
             Triple("Choose a paired device", "Something already in your phone's Bluetooth list", Glyph.Shape.BLUETOOTH) to { pickBonded() },
@@ -612,10 +612,12 @@ class MainActivity : Activity() {
             val check = if (i == selected) Glyph(this, Glyph.Shape.CHECK, p.accent, 20) else View(this)
             list.addView(listRow(t, s, icon, if (i == selected) p.accent else p.muted, trailing = check) {
                 dialog?.dismiss()
-                go()
+                safely(t, go)
             })
         }
-        body.addView(ScrollView(this).apply { addView(list) }, lp())
+        body.addView(ScrollView(this).apply {
+            addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        }, lp())
         dialog = AlertDialog.Builder(this).setView(body).create().apply {
             window?.setBackgroundDrawable(android.graphics.drawable.InsetDrawable(Ui.rounded(p.surface, 26), Ui.dp(16)))
             show()
@@ -641,6 +643,16 @@ class MainActivity : Activity() {
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
+
+    /** Runs a user action; a failure shows a message instead of closing the app. */
+    private fun safely(what: String, action: () -> Unit) {
+        try {
+            action()
+        } catch (e: Exception) {
+            android.util.Log.e("HandBridge", "$what failed", e)
+            toast("$what didn't work: ${e.javaClass.simpleName}${e.message?.let { " – $it" } ?: ""}")
+        }
+    }
 
     // ---- state ----------------------------------------------------------------------------
 
