@@ -606,14 +606,13 @@ class MainActivity : Activity() {
         val body = vbox { setPadding(Ui.dp(18), Ui.dp(20), Ui.dp(18), Ui.dp(12)) }
         body.addView(label(title, 20f, bold = true), lp().margins(l = 4))
         if (subtitle != null) body.addView(label(subtitle, 14f, p.muted), lp().margins(l = 4, t = 4))
-        val list = vbox { setPadding(0, Ui.dp(10), 0, 0) }
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         rows.forEachIndexed { i, (meta, go) ->
             val (t, s, icon) = meta
-            val check = if (i == selected) Glyph(this, Glyph.Shape.CHECK, p.accent, 20) else View(this)
-            list.addView(listRow(t, s, icon, if (i == selected) p.accent else p.muted, trailing = check) {
+            list.addView(pickerRow(t, s, icon, selected = i == selected) {
                 dialog?.dismiss()
                 safely(t, go)
-            })
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         body.addView(ScrollView(this).apply {
             addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
@@ -622,6 +621,30 @@ class MainActivity : Activity() {
             window?.setBackgroundDrawable(android.graphics.drawable.InsetDrawable(Ui.rounded(p.surface, 26), Ui.dp(16)))
             show()
         }
+    }
+
+    /**
+     * One row in a picker sheet. Built from plain views with explicit sizes: the shared listRow
+     * layout collapsed its text column in the sheet.
+     */
+    private fun pickerRow(title: String, sub: String?, icon: Glyph.Shape, selected: Boolean, onClick: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = Ui.dp(64)
+            setPadding(Ui.dp(4), Ui.dp(10), Ui.dp(4), Ui.dp(10))
+            background = Ui.ripple(Ui.rounded(android.graphics.Color.TRANSPARENT, 14), 14)
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+        val tint = if (selected) p.accent else p.muted
+        row.addView(Glyph(this, icon, tint, 22), LinearLayout.LayoutParams(Ui.dp(22), Ui.dp(22)).apply { rightMargin = Ui.dp(16) })
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(TextView(this).apply { text = title; textSize = 16f; setTextColor(p.text) })
+        if (sub != null) texts.addView(TextView(this).apply { text = sub; textSize = 13f; setTextColor(p.muted) })
+        row.addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        if (selected) row.addView(Glyph(this, Glyph.Shape.CHECK, p.accent, 20), LinearLayout.LayoutParams(Ui.dp(20), Ui.dp(20)))
+        return row
     }
 
     private fun confirm(title: String, message: String, yes: String, onYes: () -> Unit) {
@@ -721,8 +744,16 @@ class MainActivity : Activity() {
             return
         }
         sheet("Paired devices", bonded.map { dev ->
-            Triple(dev.name ?: "Unknown device", dev.address as String?, Glyph.Shape.BLUETOOTH) to { associate(dev.address) }
-        })
+            Triple(dev.name ?: "Unknown device", dev.address as String?, Glyph.Shape.BLUETOOTH) to { addPaired(dev) }
+        }, subtitle = "Tap a device to add it. Then connect it from the Devices tab.")
+    }
+
+    /** Adds an already-paired device to our list and registers it so it can auto-connect when nearby. */
+    private fun addPaired(dev: android.bluetooth.BluetoothDevice) {
+        val addr = dev.address.uppercase()
+        Prefs.upsert(this, Dev(addr, dev.name ?: addr, Mode.MOUSE, true))
+        showTab(Tab.DEVICES)
+        associate(addr) // system asks once; afterwards the phone knows this device's presence
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
