@@ -70,14 +70,37 @@
             </intent-filter>
         </receiver>
 
-        <!-- Optional: lets Tasker/MacroDroid/the air-gestures app forward gestures. Off by default in settings. -->
+        <!-- Optional: Tasker/MacroDroid entry point. Off by default in settings. Air Gestures'
+             implicit broadcast can't reach a manifest receiver; BridgeService registers for it. -->
         <receiver
             android:name=".GestureReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.hand.bridge.GESTURE" />
-                <action android:name="dev.kb896.airgestures.GESTURE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Band status, sent by Air Gestures only to this package after SET_PROFILE. -->
+        <receiver
+            android:name=".AirStatusReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="dev.kb896.airgestures.STATUS" />
+            </intent-filter>
+        </receiver>
+
+        <!-- A remembered device linking up starts the bridge (ACL_CONNECTED is a protected broadcast). -->
+        <receiver
+            android:name=".BluetoothEventReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
             </intent-filter>
         </receiver>
     </application>
+
+    <queries>
+        <package android:name="dev.kb896.airgestures" />
+        <package android:name="dev.kb896.airgestures.dev" />
+    </queries>
 </manifest>

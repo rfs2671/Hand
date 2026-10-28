@@ -121,7 +121,20 @@ class MainActivity : Activity() {
             }
         })
         root.addView(Switch(this).apply {
-            text = "Allow gesture broadcasts (Tasker / MacroDroid)"
+            text = "Receive Air Gestures (set each gesture to “Send to automation” in Air Gestures)"
+            isChecked = Prefs.airGestures(this@MainActivity)
+            setOnCheckedChangeListener { _, on -> Prefs.setAirGestures(this@MainActivity, on) }
+        })
+        root.addView(Switch(this).apply {
+            text = "Use a “Hand Bridge” profile in Air Gestures while the bridge runs (also shows band status)"
+            isChecked = Prefs.airProfile(this@MainActivity)
+            setOnCheckedChangeListener { _, on ->
+                Prefs.setAirProfile(this@MainActivity, on)
+                if (Prefs.enabled(this@MainActivity)) AirGestures.announce(this@MainActivity, on)
+            }
+        })
+        root.addView(Switch(this).apply {
+            text = "Allow Tasker / MacroDroid intents (any app could send these)"
             isChecked = Prefs.allowBroadcast(this@MainActivity)
             setOnCheckedChangeListener { _, on -> Prefs.setAllowBroadcast(this@MainActivity, on) }
         })
@@ -221,8 +234,14 @@ class MainActivity : Activity() {
             else -> "○ Bridge is off"
         }
         fun ok(b: Boolean) = if (b) "✔" else "✘"
-        setup.text = "${ok(hasBt())} Bluetooth permission   ${ok(a11yOn())} Accessibility service   ${ok(batteryOk())} Battery exemption"
-        lastInput.text = "Last input seen: ${Bridge.lastInput}"
+        setup.text = "${ok(hasBt())} Bluetooth permission   ${ok(a11yOn())} Accessibility service   " +
+            "${ok(batteryOk())} Battery exemption   ${ok(AirGestures.installed(this))} Air Gestures installed"
+        val band = when (AirGestures.bandConnected) {
+            null -> ""
+            true -> "   ·   Band connected" + if (AirGestures.battery >= 0) " (${AirGestures.battery}%)" else ""
+            false -> "   ·   Band disconnected (gestures paused)"
+        }
+        lastInput.text = "Last input seen: ${Bridge.lastInput}$band"
     }
 
     // ---- permissions / settings ------------------------------------------------------------
@@ -400,7 +419,7 @@ class MainActivity : Activity() {
                     override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                         if (actions[pos] == cur) return
                         val m = Prefs.mapping(this@MainActivity).toMutableMap()
-                        if (actions[pos] == Action.NONE) m.remove(input) else m[input] = actions[pos].name
+                        m[input] = actions[pos].name // NONE is stored so a default stays switched off
                         Prefs.setMapping(this@MainActivity, m)
                         renderLists()
                     }

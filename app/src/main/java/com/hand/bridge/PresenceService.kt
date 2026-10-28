@@ -25,8 +25,10 @@ class PresenceService : CompanionDeviceService() {
         lastAddr = addr
         lastAt = now
         val dev = Prefs.device(this, addr) ?: return
-        if (!dev.auto || dev.mode == Mode.LOCAL) return
-        BridgeService.start(this, connect = addr)
+        if (!dev.auto) return
+        // A "This phone only" device (e.g. the car) just brings the bridge up so gestures are
+        // received; there is no HID host to connect to.
+        BridgeService.start(this, connect = if (dev.mode == Mode.LOCAL) null else addr)
     }
 
     private companion object {

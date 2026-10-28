@@ -24,14 +24,44 @@ unknown apps, install. Or build locally: `./gradlew assembleRelease` (needs the 
    - **This phone only** – nothing is sent over Bluetooth.
 5. **Gestures → Learn a gesture**, perform the gesture on your band, then choose what it does. *Last input seen* shows
    exactly what the band/app emits, which is the quickest way to debug a mapping.
+6. **Car:** add the car's Bluetooth with mode *This phone only*. When the car connects, the bridge starts so gestures
+   reach the phone's media controls (which Android Auto follows).
 
-Auto-connect: every added device is registered with Android's *Companion Device* service. When it comes into range the
-system wakes Hand Bridge (even if the app was closed and the screen is off), which starts the foreground service and
-connects. The bridge also restarts after a reboot.
+Auto-connect: every added device is registered with Android's *Companion Device* service, and a Bluetooth link-up from a
+remembered device also starts the bridge. Classic-Bluetooth devices only wake the app when they *connect*, not when
+they come into range, so the bridge also retries the last device each time the screen turns on. The bridge restarts
+after a reboot.
+
+## Air Gestures (Neural Band)
+Air Gestures broadcasts `dev.kb896.airgestures.GESTURE` for every gesture you set to **Send to automation** in Air
+Gestures. Hand Bridge receives it while *Bridge running* is on (*Receive Air Gestures* switch, on by default). Names map
+as `EVT_<GESTURE>`, e.g. `index_tap` → `EVT_INDEX_TAP`; a dial with `steps=+3` becomes three `EVT_DIAL_UP` inputs. The
+default table covers swipes, index/middle taps, index drags and both dials; change any row in the app.
+
+Optional *Use a "Hand Bridge" profile*: Hand Bridge asks Air Gestures to switch to a profile named `com.hand.bridge`
+(create it in Air Gestures with your gestures on *Send to automation*) and receives band status. While Air Gestures
+reports the band disconnected, incoming gestures are ignored.
+
+Security: Air Gestures' broadcast is unprotected, so another app on the phone could fake gestures. On Android 14+ Hand
+Bridge rejects a broadcast whose sender identifies itself as a different app, but senders can stay anonymous, so this
+narrows the risk rather than removing it. Don't install apps you don't trust alongside it.
 
 ## Optional: Tasker / MacroDroid
-If your gesture app can fire intents, enable *Allow gesture broadcasts* and send `com.hand.bridge.GESTURE` with
-extra `gesture=pinch` (mapped as `EVT_PINCH`) or `action=SELECT` (any action name).
+Enable *Allow Tasker / MacroDroid intents* and send a broadcast with action `com.hand.bridge.GESTURE`, **package
+`com.hand.bridge`**, and extra `gesture=pinch` (mapped as `EVT_PINCH`, plus `steps` for dials) or `action=SELECT`.
+
+## Release signing (one-time, so updates install over each other)
+Without these secrets CI signs with a throwaway debug key, and every new APK must be installed after uninstalling the
+old one. Create a key once and keep a backup (losing it means one more uninstall):
+
+```
+keytool -genkeypair -v -keystore handbridge.jks -alias handbridge -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 handbridge.jks > handbridge.jks.b64
+```
+
+In GitHub → Settings → Secrets and variables → Actions, add `HB_KEYSTORE_BASE64` (contents of the .b64 file),
+`HB_STORE_PASSWORD`, `HB_KEY_ALIAS` (`handbridge`) and `HB_KEY_PASSWORD`. Never commit the .jks file. The first build
+signed with it needs one uninstall of the debug-signed app; after that, updates install normally.
 
 ## Limits you should know about
 - **A powered-off phone can't do anything.** "Phone off" works as screen-off/locked/app closed, and after reboot.

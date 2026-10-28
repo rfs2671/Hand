@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
+import android.bluetooth.BluetoothHidDeviceAppQosSettings
 import android.bluetooth.BluetoothHidDeviceAppSdpSettings
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
@@ -36,24 +37,77 @@ class HidBridge(context: Context) {
     val listeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
     private fun changed() = main.post { listeners.forEach { it() } }
 
+    private var reRegisterAttempts = 0
+    private var userDisconnected: String? = null
+
     private val callback = object : BluetoothHidDevice.Callback() {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
             this@HidBridge.registered = registered
             if (registered) {
+                reRegisterAttempts = 0
                 host = proxy?.connectedDevices?.firstOrNull()
                 pendingConnect?.let { connectWithRetry(it) }
+            } else {
+                // Android drops the registration when Bluetooth restarts or another app takes the
+                // HID slot. Re-register with backoff while the bridge is meant to be running.
+                host = null
+                scheduleReRegister()
             }
             changed()
         }
 
         override fun onConnectionStateChanged(device: BluetoothDevice, state: Int) {
             when (state) {
-                BluetoothProfile.STATE_CONNECTED -> host = device
-                BluetoothProfile.STATE_DISCONNECTED ->
+                BluetoothProfile.STATE_CONNECTED -> {
+                    host = device
+                    userDisconnected = null
+                    Prefs.setLastHost(ctx, device.address)
+                }
+                BluetoothProfile.STATE_DISCONNECTED -> {
                     if (host?.address == device.address) host = null
+                    val dev = Prefs.device(ctx, device.address)
+                    val unexpected = userDisconnected != device.address && pendingConnect == null
+                    if (unexpected && dev != null && dev.auto && dev.mode != Mode.LOCAL && Prefs.enabled(ctx)) {
+                        main.postDelayed({ if (host == null) connectWithRetry(device.address) }, 2_000)
+                    }
+                }
             }
             changed()
         }
+
+        // Hosts may poll reports (e.g. during boot-protocol negotiation); answer instead of timing out.
+        override fun onGetReport(device: BluetoothDevice, type: Byte, id: Byte, bufferSize: Int) {
+            val size = when (id.toInt()) {
+                ID_KEYBOARD -> 8
+                ID_MOUSE -> 4
+                ID_CONSUMER -> 2
+                else -> { proxy?.reportError(device, BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID); return }
+            }
+            proxy?.replyReport(device, type, id, ByteArray(size))
+        }
+
+        override fun onSetReport(device: BluetoothDevice, type: Byte, id: Byte, data: ByteArray) {
+            proxy?.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS)
+        }
+    }
+
+    private fun register(hid: BluetoothHidDevice) {
+        val sdp = BluetoothHidDeviceAppSdpSettings(
+            "Hand Bridge", "Gesture bridge", "Hand",
+            BluetoothHidDevice.SUBCLASS1_COMBO, DESCRIPTOR
+        )
+        // Low-latency interrupt channel settings commonly used by Android HID-device apps.
+        val qos = BluetoothHidDeviceAppQosSettings(
+            BluetoothHidDeviceAppQosSettings.SERVICE_BEST_EFFORT, 800, 9, 0, 11250,
+            BluetoothHidDeviceAppQosSettings.MAX
+        )
+        runCatching { hid.registerApp(sdp, null, qos, exec, callback) }
+    }
+
+    private fun scheduleReRegister() {
+        if (!Prefs.enabled(ctx) || reRegisterAttempts >= 6) return
+        val delay = 1_000L shl reRegisterAttempts++ // 1s, 2s, 4s ... 32s
+        main.postDelayed({ start() }, delay)
     }
 
     private val serviceListener = object : BluetoothProfile.ServiceListener {
@@ -61,11 +115,7 @@ class HidBridge(context: Context) {
             if (profile != BluetoothProfile.HID_DEVICE) return
             val hid = p as BluetoothHidDevice
             proxy = hid
-            val sdp = BluetoothHidDeviceAppSdpSettings(
-                "Hand Bridge", "Gesture bridge", "Hand",
-                BluetoothHidDevice.SUBCLASS1_COMBO, DESCRIPTOR
-            )
-            hid.registerApp(sdp, null, null, exec, callback)
+            register(hid)
         }
 
         override fun onServiceDisconnected(profile: Int) {
@@ -82,9 +132,30 @@ class HidBridge(context: Context) {
     @Synchronized
     fun start() {
         val a = adapter ?: return
-        if (!a.isEnabled || proxyRequested || registered) return
-        proxyRequested = a.getProfileProxy(ctx, serviceListener, BluetoothProfile.HID_DEVICE)
+        if (!a.isEnabled || registered) return
+        val p = proxy
+        if (p != null) register(p)
+        else if (!proxyRequested) proxyRequested = a.getProfileProxy(ctx, serviceListener, BluetoothProfile.HID_DEVICE)
     }
+
+    /**
+     * Try the most recent auto-connect host (then any other) when nothing is connected.
+     * Called on screen-on and Bluetooth events: Classic hosts don't trigger a "nearby" wake by
+     * themselves, so these are the moments we get to attempt a first connection.
+     */
+    fun reconnectAuto() {
+        if (host != null || pendingConnect != null) return
+        val now = System.currentTimeMillis()
+        if (now - lastAutoAttempt < 30_000) return
+        val candidates = Prefs.devices(ctx).filter { it.auto && it.mode != Mode.LOCAL }
+        if (candidates.isEmpty()) return
+        lastAutoAttempt = now
+        val last = Prefs.lastHost(ctx)
+        val pick = candidates.firstOrNull { it.address == last } ?: candidates.first()
+        connectWithRetry(pick.address)
+    }
+
+    private var lastAutoAttempt = 0L
 
     @Synchronized
     fun stop() {
@@ -125,7 +196,10 @@ class HidBridge(context: Context) {
     fun disconnect() {
         attemptGen++
         pendingConnect = null
-        host?.let { proxy?.disconnect(it) }
+        host?.let {
+            userDisconnected = it.address
+            proxy?.disconnect(it)
+        }
     }
 
     // ---- reports -------------------------------------------------------------------------

@@ -31,20 +31,27 @@ object Bridge {
         return if (activeMode(ctx) == Mode.LOCAL) action in LOCAL_ACTIONS else true
     }
 
-    /** Returns true if the input was consumed. [repeat] is 0 for the first press, then 1, 2... while held. */
-    fun handle(ctx: Context, input: String, repeat: Int = 0): Boolean {
+    /**
+     * Returns true if the input was consumed. [repeat] is 0 for the first press, then 1, 2... while held.
+     * [discrete] marks one-shot events (Air Gestures swipes/drags) that have no key-repeat, so a
+     * pointer move uses a larger step instead of the slow first step of a held key.
+     */
+    fun handle(ctx: Context, input: String, repeat: Int = 0, discrete: Boolean = false): Boolean {
         lastInput = input
-        learn?.let { it(input); return true }
+        learn?.let { learn = null; it(input); return true } // one capture, even for a multi-step dial
         if (!claims(ctx, input)) return false
         val action = Actions.parse(Prefs.mapping(ctx)[input])
-        return perform(ctx, action, repeat)
+        return perform(ctx, action, repeat, discrete)
     }
 
-    fun perform(ctx: Context, action: Action, repeat: Int = 0): Boolean {
+    fun perform(ctx: Context, action: Action, repeat: Int = 0, discrete: Boolean = false): Boolean {
         if (repeat > 0 && !action.repeats) return true
         val mode = activeMode(ctx)
-        return if (mode == Mode.LOCAL) local(ctx, action) else viaHid(hid(ctx), mode, action, repeat)
+        return if (mode == Mode.LOCAL) local(ctx, action)
+        else viaHid(hid(ctx), mode, action, if (discrete) DISCRETE_REPEAT else repeat)
     }
+
+    private const val DISCRETE_REPEAT = 17 // ~40 px per event
 
     private val LOCAL_ACTIONS = setOf(
         Action.BACK, Action.HOME, Action.MENU, Action.PLAY_PAUSE, Action.NEXT, Action.PREV,

@@ -29,9 +29,18 @@ class BridgeService : Service() {
         }
     }
 
+    // Air Gestures sends implicit broadcasts, which only runtime-registered receivers get.
+    // (com.hand.bridge.GESTURE stays on the manifest receiver only, so nothing is handled twice.)
     private val gestureEvents = object : BroadcastReceiver() {
         override fun onReceive(c: Context, intent: Intent) {
-            GestureReceiver().onReceive(c, intent)
+            if (AirGestures.accept(c, this)) AirGestures.dispatch(c, intent)
+        }
+    }
+
+    private val screenOn = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            hid.start() // re-register if the HID slot was lost and the backoff gave up
+            hid.reconnectAuto()
         }
     }
 
@@ -42,21 +51,15 @@ class BridgeService : Service() {
             NotificationChannel(CHANNEL, "Bridge status", NotificationManager.IMPORTANCE_LOW)
         )
         registerReceiver(btState, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
-        // Air Gestures sends implicit broadcasts; runtime registration is required on modern Android.
-        registerReceiver(
-            gestureEvents,
-            IntentFilter().apply {
-                addAction("dev.kb896.airgestures.GESTURE")
-                addAction("com.hand.bridge.GESTURE")
-            },
-            Context.RECEIVER_EXPORTED
-        )
+        registerReceiver(gestureEvents, IntentFilter(AirGestures.ACTION_GESTURE), Context.RECEIVER_EXPORTED)
+        registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
         hid.listeners.add(onChange)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             Prefs.setEnabled(this, false)
+            if (Prefs.airProfile(this)) AirGestures.announce(this, false)
             hid.stop()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -68,8 +71,10 @@ class BridgeService : Service() {
         }
         startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         Prefs.setEnabled(this, true)
+        if (Prefs.airProfile(this)) AirGestures.announce(this, true)
         hid.start()
-        intent?.getStringExtra(EXTRA_CONNECT)?.let { hid.connectWithRetry(it) }
+        val connect = intent?.getStringExtra(EXTRA_CONNECT)
+        if (connect != null) hid.connectWithRetry(connect) else hid.reconnectAuto()
         return START_STICKY
     }
 
@@ -107,6 +112,7 @@ class BridgeService : Service() {
         hid.listeners.remove(onChange)
         runCatching { unregisterReceiver(btState) }
         runCatching { unregisterReceiver(gestureEvents) }
+        runCatching { unregisterReceiver(screenOn) }
         super.onDestroy()
     }
 
@@ -118,10 +124,11 @@ class BridgeService : Service() {
         const val ACTION_STOP = "com.hand.bridge.STOP"
         const val EXTRA_CONNECT = "connect"
 
-        fun start(ctx: Context, connect: String? = null) {
+        /** Returns false if Android refused a start from the background. */
+        fun start(ctx: Context, connect: String? = null): Boolean {
             val i = Intent(ctx, BridgeService::class.java)
             connect?.let { i.putExtra(EXTRA_CONNECT, it) }
-            ctx.startForegroundService(i)
+            return runCatching { ctx.startForegroundService(i) }.isSuccess
         }
 
         fun stop(ctx: Context) {

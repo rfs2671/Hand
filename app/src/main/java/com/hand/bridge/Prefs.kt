@@ -18,8 +18,20 @@ object Prefs {
     fun enabled(c: Context) = sp(c).getBoolean("enabled", false)
     fun setEnabled(c: Context, v: Boolean) = sp(c).edit().putBoolean("enabled", v).apply()
 
+    /** Tasker/MacroDroid intents (com.hand.bridge.GESTURE). Opt-in: any app could send them. */
     fun allowBroadcast(c: Context) = sp(c).getBoolean("broadcast", false)
     fun setAllowBroadcast(c: Context, v: Boolean) = sp(c).edit().putBoolean("broadcast", v).apply()
+
+    /** Air Gestures broadcasts (dev.kb896.airgestures.GESTURE). On by default; sender is checked. */
+    fun airGestures(c: Context) = sp(c).getBoolean("airgestures", true)
+    fun setAirGestures(c: Context, v: Boolean) = sp(c).edit().putBoolean("airgestures", v).apply()
+
+    /** Ask Air Gestures to switch to a profile named after this app, and receive band status. */
+    fun airProfile(c: Context) = sp(c).getBoolean("airprofile", false)
+    fun setAirProfile(c: Context, v: Boolean) = sp(c).edit().putBoolean("airprofile", v).apply()
+
+    fun lastHost(c: Context) = sp(c).getString("lasthost", null)
+    fun setLastHost(c: Context, v: String) = sp(c).edit().putString("lasthost", v).apply()
 
     fun devices(c: Context): List<Dev> {
         val arr = JSONArray(sp(c).getString("devices", "[]"))
@@ -54,7 +66,8 @@ object Prefs {
     fun mapping(c: Context): Map<String, String> {
         val s = sp(c).getString("map", null) ?: return Actions.defaults
         val o = JSONObject(s)
-        return o.keys().asSequence().associateWith { o.getString(it) }
+        // Saved choices win; defaults added in later versions still show up. "NONE" disables an input.
+        return Actions.defaults + o.keys().asSequence().associateWith { o.getString(it) }
     }
 
     fun setMapping(c: Context, m: Map<String, String>) {
