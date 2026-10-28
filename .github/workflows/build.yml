@@ -18,10 +18,14 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      # GitHub Ubuntu runners already include command-line SDK tools.
+      # setup-android@v3 currently tries to install the removed SDK "tools" package.
+      - name: Install Android 35 SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew --no-daemon assembleRelease
+      - run: chmod +x ./gradlew && ./gradlew --no-daemon --stacktrace assembleRelease
       - run: cp app/build/outputs/apk/release/app-release.apk HandBridge.apk
       - uses: actions/upload-artifact@v4
         with:
