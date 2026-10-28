@@ -29,6 +29,12 @@ class BridgeService : Service() {
         }
     }
 
+    private val gestureEvents = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, intent: Intent) {
+            GestureReceiver().onReceive(c, intent)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         val nm = svc<NotificationManager>()
@@ -36,6 +42,15 @@ class BridgeService : Service() {
             NotificationChannel(CHANNEL, "Bridge status", NotificationManager.IMPORTANCE_LOW)
         )
         registerReceiver(btState, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+        // Air Gestures sends implicit broadcasts; runtime registration is required on modern Android.
+        registerReceiver(
+            gestureEvents,
+            IntentFilter().apply {
+                addAction("dev.kb896.airgestures.GESTURE")
+                addAction("com.hand.bridge.GESTURE")
+            },
+            Context.RECEIVER_EXPORTED
+        )
         hid.listeners.add(onChange)
     }
 
@@ -91,6 +106,7 @@ class BridgeService : Service() {
     override fun onDestroy() {
         hid.listeners.remove(onChange)
         runCatching { unregisterReceiver(btState) }
+        runCatching { unregisterReceiver(gestureEvents) }
         super.onDestroy()
     }
 
