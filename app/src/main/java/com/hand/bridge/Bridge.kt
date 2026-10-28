@@ -11,6 +11,9 @@ object Bridge {
     /** When set, the next input name is handed here instead of being acted on (the "Learn" button). */
     @Volatile var learn: ((String) -> Unit)? = null
     @Volatile var lastInput: String = "-"
+        set(v) { field = v; lastAt = System.currentTimeMillis() }
+    @Volatile var lastAt: Long = 0L
+        private set
 
     fun hid(ctx: Context): HidBridge =
         hidInstance ?: synchronized(this) {

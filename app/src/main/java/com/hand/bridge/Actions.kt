@@ -44,6 +44,14 @@ object Actions {
 
     val directional = setOf(Action.UP, Action.DOWN, Action.LEFT, Action.RIGHT)
 
+    /** "EVT_INDEX_TAP" -> "Index tap", "KEY_DPAD_UP" -> "Dpad up". */
+    fun pretty(input: String): String {
+        val raw = input.removePrefix("EVT_").removePrefix("KEY_").lowercase().replace('_', ' ')
+        return raw.replaceFirstChar { it.uppercase() }
+    }
+
+    fun isBand(input: String) = input.startsWith("EVT_")
+
     fun parse(name: String?): Action =
         runCatching { Action.valueOf(name ?: "") }.getOrDefault(Action.NONE)
 }

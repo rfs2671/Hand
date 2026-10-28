@@ -95,7 +95,7 @@ class BridgeService : Service() {
             this, 1, Intent(this, BridgeService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE
         )
         return Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("Hand Bridge")
             .setContentText(statusText())
             .setContentIntent(open)
