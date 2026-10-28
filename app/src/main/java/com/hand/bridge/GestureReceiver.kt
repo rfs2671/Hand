@@ -19,8 +19,15 @@ class GestureReceiver : BroadcastReceiver() {
             if (a != Action.NONE) Bridge.perform(c, a)
             return
         }
-        i.getStringExtra("gesture")?.let {
-            Bridge.handle(c, "EVT_" + it.trim().uppercase().replace(' ', '_').replace('-', '_'))
+        i.getStringExtra("gesture")?.let { gesture ->
+            val key = "EVT_" + gesture.trim().uppercase().replace(' ', '_').replace('-', '_')
+            val steps = i.getIntExtra("steps", 0)
+            if (steps != 0) {
+                val direction = if (steps > 0) Action.VOL_UP else Action.VOL_DOWN
+                repeat(kotlin.math.abs(steps).coerceAtMost(20)) { Bridge.perform(c, direction) }
+            } else {
+                Bridge.handle(c, key)
+            }
         }
     }
 }
