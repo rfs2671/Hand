@@ -76,6 +76,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.hand.bridge.GESTURE" />
+                <action android:name="dev.kb896.airgestures.GESTURE" />
             </intent-filter>
         </receiver>
     </application>
