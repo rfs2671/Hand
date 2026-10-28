@@ -22,8 +22,10 @@ jobs:
       # setup-android@v3 currently tries to install the removed SDK "tools" package.
       - name: Install Android 35 SDK packages
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMGR="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          if [ ! -x "$SDKMGR" ]; then SDKMGR=$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -1); fi
+          "$SDKMGR" --install "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x ./gradlew && ./gradlew --no-daemon --stacktrace assembleRelease
       - run: cp app/build/outputs/apk/release/app-release.apk HandBridge.apk
