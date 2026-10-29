@@ -55,12 +55,22 @@ object TvManager {
             if (!Prefs.enabled(app)) { Trace.add("tv: starting the bridge"); BridgeService.start(app) }
         }
         if (!wanted || !busy.compareAndSet(false, true)) return
-        io.execute { try { doConnect(app, target, afterWake) } finally { busy.set(false) } }
+        io.execute {
+            try {
+                doConnect(app, target, afterWake)
+            } catch (e: Throwable) {
+                Trace.add("tv: connect crashed: ${e.javaClass.simpleName} ${e.message}")
+                error = e.message ?: e.javaClass.simpleName
+                set(TvState.UNREACHABLE)
+            } finally {
+                busy.set(false)
+            }
+        }
     }
 
     fun disconnect() {
         wanted = false
-        io.execute { dropConnection(); set(TvState.IDLE) }
+        io.execute { runCatching { dropConnection() }; set(TvState.IDLE) }
     }
 
     private fun dropConnection() {

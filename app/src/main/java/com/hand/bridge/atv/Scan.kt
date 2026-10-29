@@ -33,6 +33,9 @@ object Scan {
         val pool = Executors.newFixedThreadPool(threads) { r -> Thread(r, "scan").apply { isDaemon = true } }
         try {
             pool.invokeAll(hosts.map { h -> Callable { if (!stopped() && isOpen(h, port, timeoutMs)) onOpen(h) } })
+        } catch (e: InterruptedException) {
+            // The caller stopped the search (e.g. the user picked a TV). Not an error.
+            Thread.currentThread().interrupt()
         } finally {
             pool.shutdownNow()
         }

@@ -214,6 +214,23 @@ class MainActivity : Activity() {
             addView(action, lp().margins(t = 20))
         })
 
+        // If the app closed unexpectedly last time, say so and offer the details.
+        CrashLog.last(this)?.let { crash ->
+            page.addView(card {
+                background = Ui.rounded(Ui.tint(p.bad, 0x1F), 22)
+                addView(label("The app closed unexpectedly last time", 17f, bold = true))
+                addView(label("Copy the details and paste them in a message so it can be fixed.", 14f, p.muted), lp().margins(t = 4, b = 12))
+                addView(hbox {
+                    addView(pill("Copy details", BtnStyle.PRIMARY) {
+                        getSystemService(android.content.ClipboardManager::class.java)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText("Hand Bridge crash", crash))
+                        toast("Copied")
+                    }, lp(0, weight = 1f).margins(r = 10))
+                    addView(pill("Dismiss", BtnStyle.SECONDARY) { CrashLog.clear(this@MainActivity); rebuild() })
+                })
+            })
+        }
+
         val setupBox = vbox {}
         page.addView(setupBox)
 

@@ -102,6 +102,16 @@ fun main(args: Array<String>) {
     val hits = java.util.concurrent.CopyOnWriteArrayList<String>()
     Scan.openPort(listOf("127.0.0.1", "127.0.0.2", "127.0.0.3"), pairPort, 500) { hits.add(it) }
     check("port scan finds only the host with the port open", hits.toList() == listOf("127.0.0.1"), hits.toString())
+    // Regression: the finder is stopped (thread interrupted) while a scan is running. This used to kill the app.
+    val escaped = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
+    val scanner = Thread { Scan.openPort(Scan.hosts("192.0.2.9", 24), 9, 800) {} }
+    scanner.setUncaughtExceptionHandler { _, e -> escaped.set(e) }
+    scanner.start(); Thread.sleep(150); scanner.interrupt(); scanner.join(5000)
+    check("interrupting a running scan ends it quietly", !scanner.isAlive && escaped.get() == null, escaped.get()?.toString() ?: "ok")
+    val early = Thread { Thread.currentThread().interrupt(); Scan.openPort(listOf("127.0.0.1"), pairPort, 500) {} }
+    early.setUncaughtExceptionHandler { _, e -> escaped.set(e) }
+    early.start(); early.join(5000)
+    check("a scan started already-interrupted doesn't throw", escaped.get() == null, escaped.get()?.toString() ?: "ok")
     val probe = TvProbe.identify(id, "127.0.0.1", pairPort)
     check("probe reads the TV's name, MAC and fingerprint", probe != null && probe.info.name == "Mock Projector" &&
         probe.info.mac == "AA:BB:CC:DD:EE:FF" && probe.sha256 == pin, probe?.info?.name ?: "null")

@@ -41,7 +41,7 @@ class TvFinder(
             onFound = { h -> consider(h.host, h.friendly ?: h.svc, advertisesRemote = h.type == TvDiscovery.REMOTE) },
             onError = { onStatus(it) }
         ).also { it.start() }
-        pool.execute {
+        guarded("scan") {
             val hosts = Scan.hosts(net.first, net.second)
             Scan.openPort(hosts, PAIR_PORT, 600, 48, { stopped }) { h ->
                 Trace.add("finder: $h accepts connections on $PAIR_PORT")
@@ -62,17 +62,26 @@ class TvFinder(
 
     private fun consider(host: String, hint: String, advertisesRemote: Boolean) {
         if (stopped || !tried.add(host)) return
+        guarded("probe $host") {
+            val r = TvProbe.identify(Prefs.identity(ctx), host)
+            if (stopped) return@guarded
+            when {
+                r != null -> emit(Found(r.info.name ?: hint, host, r.info.mac, hint))
+                advertisesRemote -> emit(Found(hint, host, null, hint)) // it says it is a TV remote even if the probe failed
+                else -> Trace.add("finder: $host is not a TV (no pairing certificate)")
+            }
+        }
+    }
+
+    /** Runs [block] on the pool; stopping the finder (which interrupts it) or any failure must never crash the app. */
+    private fun guarded(what: String, block: () -> Unit) {
         try {
             pool.execute {
-                val r = TvProbe.identify(Prefs.identity(ctx), host)
-                if (stopped) return@execute
-                when {
-                    r != null -> emit(Found(r.info.name ?: hint, host, r.info.mac, hint))
-                    advertisesRemote -> emit(Found(hint, host, null, hint)) // it says it is a TV remote even if the probe failed
-                    else -> Trace.add("finder: $host is not a TV (no pairing certificate)")
-                }
+                try { block() }
+                catch (e: InterruptedException) { /* stopped */ }
+                catch (e: Throwable) { Trace.add("finder: $what failed: ${e.javaClass.simpleName} ${e.message}") }
             }
-        } catch (_: java.util.concurrent.RejectedExecutionException) {}
+        } catch (_: java.util.concurrent.RejectedExecutionException) { /* already stopped */ }
     }
 
     private fun emit(f: Found) {

@@ -40,6 +40,11 @@ object Diagnostics {
         appendLine("State: ${TvManager.state} ${TvManager.error?.let { "($it)" } ?: ""}")
         Prefs.tvs(ctx).forEach { appendLine("  saved: ${it.name} ${it.host} mac=${it.mac} auto=${it.auto}") }
 
+        CrashLog.last(ctx)?.let {
+            appendLine()
+            appendLine("Last crash")
+            appendLine(it.lines().take(30).joinToString("\n"))
+        }
         appendLine()
         appendLine("Recent events")
         appendLine(Trace.dump().ifBlank { "(none yet)" })

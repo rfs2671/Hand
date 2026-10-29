@@ -179,6 +179,9 @@ class AtvRemote(
         } catch (e: IOException) {
             reason = e.message ?: e.javaClass.simpleName
             failure = e
+        } catch (e: RuntimeException) {
+            reason = "unexpected ${e.javaClass.simpleName}: ${e.message}"
+            failure = IOException(reason, e)
         } finally {
             val was = ready
             ready = false
