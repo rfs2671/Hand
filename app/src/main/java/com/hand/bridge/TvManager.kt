@@ -49,7 +49,11 @@ object TvManager {
     /** Connects (with retries) in the background. [afterWake] waits longer: a TV takes a while to boot. */
     fun connect(ctx: Context, target: Tv, userInitiated: Boolean = true, afterWake: Boolean = false) {
         val app = ctx.applicationContext
-        if (userInitiated) wanted = true
+        if (userInitiated) {
+            wanted = true
+            // Gestures only reach the TV while the bridge service runs (it owns the Air Gestures receiver).
+            if (!Prefs.enabled(app)) { Trace.add("tv: starting the bridge"); BridgeService.start(app) }
+        }
         if (!wanted || !busy.compareAndSet(false, true)) return
         io.execute { try { doConnect(app, target, afterWake) } finally { busy.set(false) } }
     }

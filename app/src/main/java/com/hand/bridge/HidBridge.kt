@@ -165,6 +165,8 @@ class HidBridge(context: Context) {
     @Synchronized
     fun start() {
         val a = adapter ?: return
+        // Wi-Fi-only users never grant Bluetooth; don't crash for them.
+        if (ctx.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
         if (!a.isEnabled || registered) return
         val p = proxy
         if (p != null) register(p)

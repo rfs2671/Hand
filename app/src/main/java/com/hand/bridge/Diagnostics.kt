@@ -20,6 +20,7 @@ object Diagnostics {
         appendLine("Permissions: bluetooth ${perm(Manifest.permission.BLUETOOTH_CONNECT)}, scan ${perm(Manifest.permission.BLUETOOTH_SCAN)}, notifications ${if (Build.VERSION.SDK_INT >= 33) perm(Manifest.permission.POST_NOTIFICATIONS) else "n/a"}")
         val a11y = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             ?.split(':')?.any { it.equals(ComponentName(ctx, GestureAccessibilityService::class.java).flattenToString(), true) } == true
+        appendLine("Air Gestures broadcasts received: ${AirGestures.received}${if (AirGestures.received > 0) ", last '${AirGestures.lastGesture}' ${(System.currentTimeMillis() - AirGestures.lastAt) / 1000}s ago, ignored because: ${AirGestures.lastRejected ?: "n/a"}" else ""}")
         appendLine("Bridge on: ${Prefs.enabled(ctx)} · accessibility: $a11y · Air Gestures installed: ${AirGestures.installed(ctx)} · band: ${AirGestures.bandConnected} ${if (AirGestures.battery >= 0) "${AirGestures.battery}%" else ""}")
 
         appendLine()

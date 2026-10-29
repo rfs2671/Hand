@@ -279,7 +279,7 @@ class MainActivity : Activity() {
             }
             if (Bridge.lastAt == 0L) {
                 lastName.text = "Nothing yet"
-                lastSub.text = "Do a gesture on your band — it shows up here."
+                lastSub.text = AirGestures.statusText(this)
             } else {
                 val input = Bridge.lastInput
                 val act = Actions.parse(Prefs.mapping(this)[input])
@@ -314,7 +314,10 @@ class MainActivity : Activity() {
         Step(AirGestures.installed(this), "Get Air Gestures", "The app that reads your Neural Band", Glyph.Shape.GESTURE) {
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AIR_GESTURES_URL))) }
         },
-        Step(Prefs.devices(this).isNotEmpty(), "Add a device", "Projector, TV, PC or your car", Glyph.Shape.DEVICES) { showTab(Tab.DEVICES) },
+        Step(AirGestures.received > 0, "Send gestures from Air Gestures", "In Air Gestures set each gesture's action to “Send to automation”", Glyph.Shape.GESTURE) {
+            packageManager.getLaunchIntentForPackage(AirGestures.PKG)?.let { startActivity(it) } ?: toast("Air Gestures isn't installed")
+        },
+        Step(Prefs.devices(this).isNotEmpty() || Prefs.tvs(this).isNotEmpty(), "Add a device", "Projector, TV, PC or your car", Glyph.Shape.DEVICES) { showTab(Tab.DEVICES) },
         Step(a11yOn(), "Phone controls (optional)", "Back and Home on this phone, plus keyboard-style input", Glyph.Shape.PHONE) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
@@ -656,7 +659,7 @@ class MainActivity : Activity() {
                             runOnUiThread {
                                 pairing = null
                                 shown?.dismiss()
-                                TvManager.connect(this@MainActivity, tv)
+                                TvManager.connect(this@MainActivity, tv) // also turns the bridge on
                                 showTab(Tab.DEVICES)
                                 toast("${tv.name} added. Connecting…")
                             }
@@ -794,13 +797,22 @@ class MainActivity : Activity() {
                 Prefs.setAirGestures(context, it)
             })
             addView(divider())
-            addView(toggleRow("Hand Bridge profile", "Air Gestures switches to a profile named com.hand.bridge and reports band status", Prefs.airProfile(context)) {
+            addView(toggleRow("Separate Air Gestures profile (advanced)", "Leave off unless you made a profile named com.hand.bridge in Air Gestures: it starts empty, so no gestures arrive until you fill it", Prefs.airProfile(context)) {
                 Prefs.setAirProfile(context, it)
                 if (Prefs.enabled(context)) AirGestures.announce(context, it)
             })
             addView(divider())
             addView(toggleRow("Tasker and MacroDroid", "Off unless you need it: any app could send these", Prefs.allowBroadcast(context)) {
                 Prefs.setAllowBroadcast(context, it)
+            })
+        })
+        page.addView(card {
+            addView(label("Test the connection", 17f, bold = true))
+            addView(label("Sends an “Index tap” to Hand Bridge the same way Air Gestures does. If your TV reacts, everything on this side works and only the Air Gestures setup is left.", 14f, p.muted), lp().margins(t = 4, b = 12))
+            addView(pill("Simulate Index tap", BtnStyle.SECONDARY, Glyph.Shape.GESTURE) {
+                if (!Prefs.enabled(context)) startBridge()
+                AirGestures.simulate(this@MainActivity, "index_tap")
+                toast("Sent. Your device should have reacted.")
             })
         })
         page.addView(pill("Reset gestures to defaults", BtnStyle.TEXT) {

@@ -37,7 +37,7 @@ class BridgeService : Service() {
     // (com.hand.bridge.GESTURE stays on the manifest receiver only, so nothing is handled twice.)
     private val gestureEvents = object : BroadcastReceiver() {
         override fun onReceive(c: Context, intent: Intent) {
-            if (AirGestures.accept(c, this)) AirGestures.dispatch(c, intent)
+            AirGestures.handleBroadcast(c, this, intent)
         }
     }
 
@@ -62,6 +62,7 @@ class BridgeService : Service() {
         )
         registerReceiver(btState, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         registerReceiver(gestureEvents, IntentFilter(AirGestures.ACTION_GESTURE), Context.RECEIVER_EXPORTED)
+        Trace.add("air: listening for Air Gestures")
         registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
         hid.listeners.add(onChange)
         TvManager.listeners.add(onChange)
@@ -78,10 +79,6 @@ class BridgeService : Service() {
             if (Prefs.airProfile(this)) AirGestures.announce(this, false)
             hid.stop()
             stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             stopSelf()
             return START_NOT_STICKY
         }

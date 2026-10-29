@@ -23,6 +23,16 @@ object AirGestures {
     @Volatile var bandConnected: Boolean? = null
     @Volatile var battery: Int = -1
 
+    /** What has actually reached us from Air Gestures (for the Home screen and the report). */
+    @Volatile var received = 0
+        private set
+    @Volatile var lastAt = 0L
+        private set
+    @Volatile var lastGesture = ""
+        private set
+    @Volatile var lastRejected: String? = null
+        private set
+
     fun installed(ctx: Context) = PKGS.any {
         runCatching { ctx.packageManager.getPackageInfo(it, 0) }.isSuccess
     }
@@ -42,13 +52,40 @@ object AirGestures {
      * sender (Android 14+, only if the sender opts in to sharing identity) and it isn't Air Gestures,
      * and while Air Gestures itself reports the band as disconnected.
      */
-    fun accept(ctx: Context, receiver: BroadcastReceiver): Boolean {
-        if (!Prefs.airGestures(ctx)) return false
+    fun accept(ctx: Context, receiver: BroadcastReceiver): String? {
+        if (!Prefs.airGestures(ctx)) return "Receive Air Gestures is switched off"
         if (Build.VERSION.SDK_INT >= 34) {
             val from = receiver.sentFromPackage
-            if (from != null && from !in PKGS) return false
+            if (from != null && from !in PKGS) return "sent by $from, not Air Gestures"
         }
-        return bandConnected != false
+        if (bandConnected == false) return "Air Gestures says the band is disconnected"
+        return null
+    }
+
+    /** Entry point for every GESTURE broadcast reaching the service. */
+    fun handleBroadcast(ctx: Context, receiver: BroadcastReceiver, i: Intent) {
+        val g = i.getStringExtra("gesture") ?: "(none)"
+        received++
+        lastAt = System.currentTimeMillis()
+        lastGesture = g
+        val steps = i.getIntExtra("steps", 0)
+        val reason = accept(ctx, receiver)
+        Trace.add("air: gesture '$g'${if (steps != 0) " steps=$steps" else ""} -> ${reason ?: "accepted"}")
+        lastRejected = reason
+        if (reason == null) dispatch(ctx, i)
+    }
+
+    /** A sentence for the Home screen. */
+    fun statusText(ctx: Context): String = when {
+        !installed(ctx) -> "Air Gestures isn't installed."
+        received == 0 -> "Nothing received from Air Gestures yet. In Air Gestures set a gesture's action to “Send to automation”, then use its “Send a test” button."
+        lastRejected != null -> "Air Gestures is sending, but the last gesture was ignored: $lastRejected."
+        else -> "Air Gestures is connected ($received received)."
+    }
+
+    /** Sends ourselves a gesture the same way Air Gestures does, to prove the rest of the chain works. */
+    fun simulate(ctx: Context, gesture: String) {
+        ctx.sendBroadcast(Intent(ACTION_GESTURE).setPackage(ctx.packageName).putExtra("gesture", gesture))
     }
 
     /** Routes one GESTURE intent (from Air Gestures or the Tasker entry point) through the mapping table. */
@@ -56,6 +93,7 @@ object AirGestures {
         val gesture = i.getStringExtra("gesture")?.trim()?.takeIf { it.isNotEmpty() } ?: return
         val base = "EVT_" + gesture.uppercase().replace(' ', '_').replace('-', '_')
         if (base == "EVT_TEST") { Bridge.lastInput = base; return }
+        Trace.add("air: $base -> ${Prefs.mapping(ctx)[base] ?: "no action assigned"}")
         val steps = i.getIntExtra("steps", 0)
         if (steps == 0) {
             Bridge.handle(ctx, base, discrete = true)
