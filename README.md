@@ -66,6 +66,10 @@ Gestures. Hand Bridge receives it while *Bridge running* is on (*Receive Air Ges
 as `EVT_<GESTURE>`, e.g. `index_tap` → `EVT_INDEX_TAP`; a dial with `steps=+3` becomes three `EVT_DIAL_UP` inputs. The
 default table covers swipes, index/middle taps, index drags and both dials; change any row in the app.
 
+**Check it before connecting anything:** the *Gesture check* card on Home lists every message from Air Gestures with what
+it would do ("Index tap → Select"). It works with the bridge off and no device connected, and then only displays: nothing
+is sent anywhere. Press *Send a test* in Air Gestures for a quick "Received ✓".
+
 Optional *Use a "Hand Bridge" profile*: Hand Bridge asks Air Gestures to switch to a profile named `com.hand.bridge`
 (create it in Air Gestures with your gestures on *Send to automation*) and receives band status. While Air Gestures
 reports the band disconnected, incoming gestures are ignored.

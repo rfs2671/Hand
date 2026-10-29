@@ -62,6 +62,7 @@ class BridgeService : Service() {
         )
         registerReceiver(btState, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         registerReceiver(gestureEvents, IntentFilter(AirGestures.ACTION_GESTURE), Context.RECEIVER_EXPORTED)
+        AirGestures.serviceListening = true
         Trace.add("air: listening for Air Gestures")
         registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
         hid.listeners.add(onChange)
@@ -129,6 +130,7 @@ class BridgeService : Service() {
         TvManager.listeners.remove(onChange)
         runCatching { svc<ConnectivityManager>().unregisterNetworkCallback(wifi) }
         runCatching { unregisterReceiver(btState) }
+        AirGestures.serviceListening = false
         runCatching { unregisterReceiver(gestureEvents) }
         runCatching { unregisterReceiver(screenOn) }
         super.onDestroy()

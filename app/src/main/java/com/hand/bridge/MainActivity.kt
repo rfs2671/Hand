@@ -58,6 +58,11 @@ class MainActivity : Activity() {
     /** Called every tick to update the visible page in place (or rebuild it when its state changed). */
     private var refresher: (() -> Unit)? = null
     private var dialog: AlertDialog? = null
+    private var monitorOn = false
+    /** Lets the Gesture check on Home see Air Gestures' messages even when the bridge is off. */
+    private val monitor = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context, i: Intent) { AirGestures.observe(c, this, i) }
+    }
     /** Live-updates whatever dialog is open (runs with the screen ticker). */
     private var dialogTick: (() -> Unit)? = null
 
@@ -96,13 +101,18 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         syncAssociations()
-        if (hasBt() && Prefs.enabled(this)) BridgeService.start(this)
+        if (Prefs.enabled(this)) BridgeService.start(this)
+        runCatching {
+            registerReceiver(monitor, android.content.IntentFilter(AirGestures.ACTION_GESTURE), android.content.Context.RECEIVER_EXPORTED)
+            monitorOn = true
+        }
         showTab(tab)
         ticker.run()
     }
 
     override fun onPause() {
         ui.removeCallbacks(ticker)
+        if (monitorOn) { runCatching { unregisterReceiver(monitor) }; monitorOn = false }
         Bridge.learn = null
         dialogTick = null
         dialog?.dismiss()
@@ -207,12 +217,12 @@ class MainActivity : Activity() {
         val setupBox = vbox {}
         page.addView(setupBox)
 
-        val lastName = label("", 20f, bold = true)
-        val lastSub = label("", 14f, p.muted)
+        val checkHint = label("", 14f, p.muted)
+        val checkRows = vbox {}
         page.addView(card {
-            addView(label("LAST GESTURE", 12f, p.muted, bold = true).apply { letterSpacing = 0.08f })
-            addView(lastName, lp().margins(t = 10))
-            addView(lastSub, lp().margins(t = 4))
+            addView(label("Gesture check", 17f, bold = true))
+            addView(checkHint, lp().margins(t = 4, b = 6))
+            addView(checkRows)
         })
 
         page.addView(card {
@@ -277,14 +287,28 @@ class MainActivity : Activity() {
                 setupBox.removeAllViews()
                 setupCard()?.let { setupBox.addView(it) }
             }
-            if (Bridge.lastAt == 0L) {
-                lastName.text = "Nothing yet"
-                lastSub.text = AirGestures.statusText(this)
-            } else {
-                val input = Bridge.lastInput
-                val act = Actions.parse(Prefs.mapping(this)[input])
-                lastName.text = Actions.pretty(input)
-                lastSub.text = (if (act == Action.NONE) "Not assigned" else "→ ${act.label}") + "  ·  " + ago(Bridge.lastAt)
+            val events = AirGestures.events().take(6)
+            checkHint.text = when {
+                events.isEmpty() -> AirGestures.statusText(this)
+                !enabled -> "Live. The bridge is off, so gestures are only shown here and sent nowhere."
+                else -> "Live. Gestures appear here as they arrive."
+            }
+            checkRows.removeAllViews()
+            val map = Prefs.mapping(this)
+            events.forEachIndexed { n, e ->
+                if (n > 0) checkRows.addView(divider())
+                val key = "EVT_" + e.gesture.trim().uppercase().replace(' ', '_').replace('-', '_')
+                val name = if (e.gesture == "test") "Test from Air Gestures"
+                    else Actions.pretty(key) + if (e.steps != 0) "  ${if (e.steps > 0) "+" else ""}${e.steps}" else ""
+                val act = Actions.parse(map[if (e.steps != 0) key + if (e.steps > 0) "_UP" else "_DOWN" else key])
+                val (what, color) = when {
+                    e.note != null -> "Ignored: ${e.note}" to p.warn
+                    e.gesture == "test" -> "Received ✓" to p.good
+                    act == Action.NONE -> "No action assigned" to p.muted
+                    else -> "→ ${act.label}" to p.good
+                }
+                checkRows.addView(listRow(name, ago(e.at), if (e.gesture == "test") Glyph.Shape.CHECK else actionIcon(act), color,
+                    trailing = label(what, 13.5f, color).apply { gravity = Gravity.END; maxWidth = Ui.dp(150) }))
             }
         }
     }

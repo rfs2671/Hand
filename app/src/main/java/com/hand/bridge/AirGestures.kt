@@ -33,6 +33,35 @@ object AirGestures {
     @Volatile var lastRejected: String? = null
         private set
 
+    /** One message from Air Gestures, kept for the live monitor on Home. [note] says why it was ignored, if it was. */
+    class Event(val at: Long, val gesture: String, val steps: Int, val note: String?)
+
+    private val log = ArrayDeque<Event>()
+    /** True while BridgeService is listening; then the screen doesn't record the same broadcast twice. */
+    @Volatile var serviceListening = false
+
+    fun events(): List<Event> = synchronized(log) { log.toList() }
+
+    private fun record(i: Intent, note: String?) {
+        val g = i.getStringExtra("gesture") ?: "(none)"
+        val steps = i.getIntExtra("steps", 0)
+        received++
+        lastAt = System.currentTimeMillis()
+        lastGesture = g
+        lastRejected = note
+        synchronized(log) {
+            log.addFirst(Event(lastAt, g, steps, note))
+            while (log.size > 30) log.removeLast()
+        }
+        Trace.add("air: gesture '$g'${if (steps != 0) " steps=$steps" else ""} -> ${note ?: "accepted"}")
+    }
+
+    /** Seen by the open app screen. Only shows it: nothing is sent to any device from here. */
+    fun observe(ctx: Context, receiver: BroadcastReceiver, i: Intent) {
+        if (serviceListening) return // the service already recorded this one
+        record(i, accept(ctx, receiver))
+    }
+
     fun installed(ctx: Context) = PKGS.any {
         runCatching { ctx.packageManager.getPackageInfo(it, 0) }.isSuccess
     }
@@ -64,14 +93,8 @@ object AirGestures {
 
     /** Entry point for every GESTURE broadcast reaching the service. */
     fun handleBroadcast(ctx: Context, receiver: BroadcastReceiver, i: Intent) {
-        val g = i.getStringExtra("gesture") ?: "(none)"
-        received++
-        lastAt = System.currentTimeMillis()
-        lastGesture = g
-        val steps = i.getIntExtra("steps", 0)
         val reason = accept(ctx, receiver)
-        Trace.add("air: gesture '$g'${if (steps != 0) " steps=$steps" else ""} -> ${reason ?: "accepted"}")
-        lastRejected = reason
+        record(i, reason)
         if (reason == null) dispatch(ctx, i)
     }
 
