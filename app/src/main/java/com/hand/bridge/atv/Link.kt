@@ -18,6 +18,12 @@ class NeedsPairing(msg: String, cause: Throwable? = null) : IOException(msg, cau
 /** The typed pairing code didn't match what the TV shows. */
 class WrongCode(msg: String) : IOException(msg)
 
+/** Closing a TLS socket sends a goodbye, which Android forbids on the main thread; do it on a short-lived thread. */
+internal fun closeAsync(s: java.io.Closeable?) {
+    if (s == null) return
+    Thread({ runCatching { s.close() } }, "atv-close").apply { isDaemon = true }.start()
+}
+
 internal object Tls {
     fun connect(ctx: SSLContext, host: String, port: Int, connectMs: Int, readMs: Int): SSLSocket {
         val raw = Socket()
@@ -116,7 +122,7 @@ class AtvPairing(
     }
 
     override fun close() {
-        runCatching { sock?.close() }
+        closeAsync(sock)
     }
 }
 
@@ -216,30 +222,56 @@ class AtvRemote(
         }
     }
 
+    /** Name of the thread that last wrote to the socket (checked by tests: it must never be the caller's). */
+    @Volatile var lastWriteThread: String? = null
+        private set
+
     private fun write(payload: ByteArray) {
         val s = sock ?: throw IOException("not connected")
-        synchronized(writeLock) { Framing.write(s.outputStream, payload) }
+        synchronized(writeLock) {
+            lastWriteThread = Thread.currentThread().name
+            Framing.write(s.outputStream, payload)
+        }
     }
 
-    /** Returns false if not connected or the write failed. */
-    fun key(code: Int, direction: Int = Remote.DIR_SHORT): Boolean {
+    // Callers (a broadcast receiver, a button) run on Android's main thread, where network writes are forbidden
+    // (NetworkOnMainThreadException) and a slow TV would freeze the screen. Writes go through one background thread.
+    private val sender = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "atv-send").apply { isDaemon = true } }
+    private val pending = java.util.concurrent.atomic.AtomicInteger()
+
+    private fun enqueue(payload: ByteArray): Boolean {
         if (!ready) return false
-        return try { write(Remote.key(code, direction)); true } catch (e: IOException) { close(); false }
+        if (pending.get() > MAX_PENDING) return false // the TV isn't keeping up; drop rather than lag behind
+        pending.incrementAndGet()
+        return try {
+            sender.execute {
+                try { write(payload) }
+                catch (e: IOException) { close() }
+                catch (e: RuntimeException) { close() }
+                finally { pending.decrementAndGet() }
+            }
+            true
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            pending.decrementAndGet()
+            false
+        }
     }
 
-    fun launch(link: String): Boolean {
-        if (!ready) return false
-        return try { write(Remote.launchApp(link)); true } catch (e: IOException) { close(); false }
-    }
+    /** Queues a key press (in order) and returns at once. False if not connected. Safe to call from any thread. */
+    fun key(code: Int, direction: Int = Remote.DIR_SHORT): Boolean = enqueue(Remote.key(code, direction))
+
+    fun launch(link: String): Boolean = enqueue(Remote.launchApp(link))
 
     override fun close() {
         closed = true
         ready = false
-        runCatching { sock?.close() }
+        closeAsync(sock)
+        sender.shutdown()
     }
 
     companion object {
         /** The TV pings every 5 s; no message for this long means the link is dead. */
         const val READ_TIMEOUT_MS = 20_000
+        private const val MAX_PENDING = 200
     }
 }

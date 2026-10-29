@@ -83,7 +83,16 @@ fun main(args: Array<String>) {
     check("client device info sent", logHas("\"package\": \"atvremote\"") && logHas("\"version\": \"1.0.0\""))
     check("set_active echoes our features (611)", waitFor { logHas("\"ev\": \"client_set_active\", \"active\": 611") })
     check("ping answered with the same value", waitFor { logHas("\"ev\": \"ping_response\", \"val1\": 7") })
+    // Regression: on Android, keys are sent from the main thread, where network writes throw
+    // NetworkOnMainThreadException. The write must happen on the sender thread, never the caller's.
+    val caller = Thread.currentThread().name
     check("DPAD_UP key", remote.key(Keys.UP) && waitFor { logHas("\"code\": 19, \"direction\": 3") })
+    check("keys are written on a background thread, not the caller's", remote.lastWriteThread == "atv-send" && remote.lastWriteThread != caller, remote.lastWriteThread ?: "null")
+    val fromOther = java.util.concurrent.atomic.AtomicReference<Boolean?>(null)
+    Thread({ fromOther.set(remote.key(Keys.INFO)) }, "pretend-main").start()
+    check("key() from another thread returns immediately and arrives", waitFor { fromOther.get() == true } && waitFor { logHas("\"code\": 165, \"direction\": 3") })
+    check("key order is preserved", (1..30).all { remote.key(Keys.PAGE_UP) } && remote.key(Keys.PAGE_DOWN) &&
+        waitFor(4000) { log.readText().let { t -> t.lastIndexOf("\"code\": 93") > t.lastIndexOf("\"code\": 92") && t.split("\"code\": 92").size - 1 == 30 } })
     check("VOLUME_UP long press start/end", remote.key(Keys.VOLUME_UP, Remote.DIR_START_LONG) && remote.key(Keys.VOLUME_UP, Remote.DIR_END_LONG) &&
         waitFor { logHas("\"code\": 24, \"direction\": 1") && logHas("\"code\": 24, \"direction\": 2") })
     check("HOME, BACK, POWER, WAKEUP keys", listOf(Keys.HOME, Keys.BACK, Keys.POWER, Keys.WAKEUP).all { remote.key(it) } &&
