@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
+    <!-- Without this, every CompanionDeviceManager call throws "Must declare uses-feature ...". -->
+    <uses-feature android:name="android.software.companion_device_setup" android:required="false" />
 
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission

@@ -766,6 +766,10 @@ class MainActivity : Activity() {
     /** Mirrors the system's companion associations into our device list and starts presence watching. */
     private fun syncAssociations() {
         if (!hasBt()) return
+        try { syncAssociationsUnsafe() } catch (e: Exception) { android.util.Log.e("HandBridge", "association sync failed", e) }
+    }
+
+    private fun syncAssociationsUnsafe() {
         val found = mutableMapOf<String, String>()
         if (Build.VERSION.SDK_INT >= 33) {
             cdm.myAssociations.forEach { a ->
