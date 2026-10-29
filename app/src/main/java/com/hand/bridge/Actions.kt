@@ -8,7 +8,8 @@ enum class Action(val label: String) {
     BACK("Back"), HOME("Home"), MENU("Menu"),
     PLAY_PAUSE("Play / pause"), NEXT("Next track"), PREV("Previous track"),
     VOL_UP("Volume up"), VOL_DOWN("Volume down"), MUTE("Mute"),
-    SCROLL_UP("Scroll up"), SCROLL_DOWN("Scroll down");
+    SCROLL_UP("Scroll up"), SCROLL_DOWN("Scroll down"),
+    POWER("Power on / off");
 
     /** Actions that make sense to keep firing while a key is held. */
     val repeats get() = this in setOf(UP, DOWN, LEFT, RIGHT, VOL_UP, VOL_DOWN, SCROLL_UP, SCROLL_DOWN)

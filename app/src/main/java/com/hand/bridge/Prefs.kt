@@ -1,6 +1,7 @@
 package com.hand.bridge
 
 import android.content.Context
+import com.hand.bridge.atv.Identity
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -11,6 +12,12 @@ enum class Mode(val label: String) {
 }
 
 data class Dev(val address: String, val name: String, val mode: Mode, val auto: Boolean)
+
+/** A Google TV / Android TV controlled over Wi-Fi. [pin] is the SHA-256 of its certificate. */
+data class Tv(
+    val id: String, val name: String, val host: String, val mac: String?,
+    val pin: String, val auto: Boolean, val svc: String
+)
 
 object Prefs {
     private fun sp(c: Context) = c.applicationContext.getSharedPreferences("hand", Context.MODE_PRIVATE)
@@ -77,4 +84,51 @@ object Prefs {
     }
 
     fun resetMapping(c: Context) = sp(c).edit().remove("map").apply()
+
+    // ---- Wi-Fi TVs ---------------------------------------------------------------------------
+
+    fun tvs(c: Context): List<Tv> {
+        val arr = JSONArray(sp(c).getString("tvs", "[]"))
+        return (0 until arr.length()).map {
+            val o = arr.getJSONObject(it)
+            Tv(
+                o.getString("id"), o.getString("name"), o.getString("host"),
+                o.optString("mac").takeIf { m -> m.isNotEmpty() }, o.getString("pin"),
+                o.optBoolean("auto", true), o.optString("svc", o.getString("name"))
+            )
+        }
+    }
+
+    fun tv(c: Context, id: String) = tvs(c).firstOrNull { it.id == id }
+
+    fun upsertTv(c: Context, t: Tv) {
+        val arr = JSONArray()
+        (tvs(c).filter { it.id != t.id } + t).forEach {
+            arr.put(
+                JSONObject().put("id", it.id).put("name", it.name).put("host", it.host).put("mac", it.mac ?: "")
+                    .put("pin", it.pin).put("auto", it.auto).put("svc", it.svc)
+            )
+        }
+        sp(c).edit().putString("tvs", arr.toString()).apply()
+    }
+
+    fun removeTv(c: Context, id: String) {
+        val keep = tvs(c).filter { it.id != id }
+        sp(c).edit().remove("tvs").apply()
+        keep.forEach { upsertTv(c, it) }
+    }
+
+    fun lastTv(c: Context) = sp(c).getString("lasttv", null)
+    fun setLastTv(c: Context, id: String) = sp(c).edit().putString("lasttv", id).apply()
+
+    /** Our client certificate, created on first use. TVs remember it after pairing, so it must persist. */
+    @Synchronized
+    fun identity(c: Context): Identity {
+        val cert = sp(c).getString("tv_cert", null)
+        val key = sp(c).getString("tv_key", null)
+        if (cert != null && key != null) return Identity.fromBase64(cert, key)
+        val id = Identity.generate()
+        sp(c).edit().putString("tv_cert", id.certBase64()).putString("tv_key", id.keyBase64()).apply()
+        return id
+    }
 }

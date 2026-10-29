@@ -3,6 +3,7 @@ package com.hand.bridge
 import android.content.Context
 import android.media.AudioManager
 import android.view.KeyEvent
+import com.hand.bridge.atv.Keys
 
 /** Process-wide router: input name -> Action -> whichever output is currently active. */
 object Bridge {
@@ -31,6 +32,8 @@ object Bridge {
         if (!Prefs.enabled(ctx)) return false
         val action = Actions.parse(Prefs.mapping(ctx)[input])
         if (action == Action.NONE) return false
+        if (action == Action.POWER) return TvManager.connected || Prefs.tvs(ctx).isNotEmpty()
+        if (TvManager.connected) return true // a Wi-Fi TV understands every action
         return if (activeMode(ctx) == Mode.LOCAL) action in LOCAL_ACTIONS else true
     }
 
@@ -49,12 +52,40 @@ object Bridge {
 
     fun perform(ctx: Context, action: Action, repeat: Int = 0, discrete: Boolean = false): Boolean {
         if (repeat > 0 && !action.repeats) return true
+        if (action == Action.POWER) return TvManager.power(ctx)
+        if (TvManager.connected) {
+            if (repeat > 0 && repeat % 3 != 0) return true // a held key repeats ~30x/s; the TV needs fewer
+            return viaTv(action)
+        }
         val mode = activeMode(ctx)
         return if (mode == Mode.LOCAL) local(ctx, action)
         else viaHid(hid(ctx), mode, action, if (discrete) DISCRETE_REPEAT else repeat)
     }
 
     private const val DISCRETE_REPEAT = 17 // ~40 px per event
+
+    private fun viaTv(a: Action): Boolean {
+        val code = when (a) {
+            Action.UP -> Keys.UP
+            Action.DOWN -> Keys.DOWN
+            Action.LEFT -> Keys.LEFT
+            Action.RIGHT -> Keys.RIGHT
+            Action.SELECT -> Keys.CENTER
+            Action.RIGHT_CLICK, Action.MENU -> Keys.MENU
+            Action.BACK -> Keys.BACK
+            Action.HOME -> Keys.HOME
+            Action.PLAY_PAUSE -> Keys.PLAY_PAUSE
+            Action.NEXT -> Keys.NEXT
+            Action.PREV -> Keys.PREVIOUS
+            Action.VOL_UP -> Keys.VOLUME_UP
+            Action.VOL_DOWN -> Keys.VOLUME_DOWN
+            Action.MUTE -> Keys.VOLUME_MUTE
+            Action.SCROLL_UP -> Keys.PAGE_UP
+            Action.SCROLL_DOWN -> Keys.PAGE_DOWN
+            Action.POWER, Action.NONE -> return false
+        }
+        return TvManager.key(code)
+    }
 
     private val LOCAL_ACTIONS = setOf(
         Action.BACK, Action.HOME, Action.MENU, Action.PLAY_PAUSE, Action.NEXT, Action.PREV,
@@ -84,7 +115,7 @@ object Bridge {
                 if (mode == Mode.MOUSE) h.mouse(0, 0, 0, 3) else h.key(HidBridge.K_PAGE_UP)
             Action.SCROLL_DOWN ->
                 if (mode == Mode.MOUSE) h.mouse(0, 0, 0, -3) else h.key(HidBridge.K_PAGE_DOWN)
-            Action.NONE -> return false
+            Action.NONE, Action.POWER -> return false
         }
         return true
     }

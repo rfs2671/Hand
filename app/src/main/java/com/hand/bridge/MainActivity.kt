@@ -24,11 +24,20 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsetsController
+import android.view.WindowManager
+import android.text.InputFilter
+import android.text.InputType
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.hand.bridge.atv.AtvPairing
+import com.hand.bridge.atv.PinTrust
+import com.hand.bridge.atv.Polo
+import com.hand.bridge.atv.TvInfo
+import com.hand.bridge.atv.WrongCode
 
 @SuppressLint("MissingPermission")
 @Suppress("DEPRECATION")
@@ -93,6 +102,9 @@ class MainActivity : Activity() {
         ui.removeCallbacks(ticker)
         Bridge.learn = null
         dialog?.dismiss()
+        stopDiscovery()
+        pairing?.close()
+        pairing = null
         super.onPause()
     }
 
@@ -205,19 +217,22 @@ class MainActivity : Activity() {
             val host = hid.host
             val enabled = Prefs.enabled(this)
             val btOn = svc<BluetoothManager>().adapter?.isEnabled == true
+            val tvNow = TvManager.connectedTv()
             val state = when {
                 !enabled -> "off"
+                tvNow != null -> "tv:${tvNow.id}"
                 !btOn -> "bt"
                 host != null -> "on:${host.address}"
                 hid.registered -> "ready"
                 else -> "starting"
             }
-            val s = "$state|${setupSignature()}|${AirGestures.bandConnected}|${AirGestures.battery}"
+            val s = "$state|${setupSignature()}|${AirGestures.bandConnected}|${AirGestures.battery}|${TvManager.state}"
             if (s != sig) {
                 sig = s
                 fun set(color: Int, t: String, d: String) { dot.color = color; title.text = t; sub.text = d }
                 when {
                     !enabled -> set(p.muted, "Bridge is off", "Turn it on and your band controls the device you pick.")
+                    tvNow != null -> set(p.good, "Connected", "${tvNow.name} · Wi-Fi remote")
                     !btOn -> set(p.warn, "Bluetooth is off", "Hand Bridge needs Bluetooth to reach your devices.")
                     host != null -> {
                         val mode = Prefs.device(this, host.address)?.mode ?: Mode.MOUSE
@@ -228,6 +243,15 @@ class MainActivity : Activity() {
                 }
                 chips.removeAllViews()
                 chips.addView(bandChip())
+                val cfgTv = TvManager.tv
+                if (enabled && cfgTv != null && tvNow == null) {
+                    when (TvManager.state) {
+                        TvState.CONNECTING -> chips.addView(chip("Connecting to ${cfgTv.name}…", p.accent, dot = true), lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(l = 8))
+                        TvState.UNREACHABLE -> chips.addView(chip("${cfgTv.name} not reachable", p.warn, dot = true), lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(l = 8))
+                        TvState.NEEDS_PAIRING -> chips.addView(chip("${cfgTv.name} needs pairing", p.warn, dot = true), lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(l = 8))
+                        else -> {}
+                    }
+                }
                 action.removeAllViews()
                 action.addView(when {
                     !enabled -> pill("Turn on", BtnStyle.PRIMARY, Glyph.Shape.POWER) { startBridge() }
@@ -336,7 +360,9 @@ class MainActivity : Activity() {
         val hid = Bridge.hid(this)
         page.addView(pill("Add a device", BtnStyle.PRIMARY, Glyph.Shape.PLUS) { addDevice() }, lp().margins(b = 14))
         val devs = Prefs.devices(this)
-        if (devs.isEmpty()) {
+        val tvs = Prefs.tvs(this)
+        tvs.forEach { page.addView(tvCard(it)) }
+        if (devs.isEmpty() && tvs.isEmpty()) {
             page.addView(card {
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(Ui.dp(24), Ui.dp(32), Ui.dp(24), Ui.dp(32))
@@ -351,8 +377,9 @@ class MainActivity : Activity() {
             addView(listRow("Using it in the car", "Add the car's Bluetooth and choose Phone. When the car connects, your band controls music and volume.",
                 Glyph.Shape.CAR, p.accent))
         })
-        val sig = "${hid.host?.address}|${hid.registered}"
-        return { if ("${hid.host?.address}|${hid.registered}" != sig) rebuild() }
+        fun sig() = "${hid.host?.address}|${hid.registered}|${TvManager.state}|${TvManager.connected}"
+        val sig = sig()
+        return { if (sig() != sig) rebuild() }
     }
 
     private fun deviceCard(d: Dev, connected: Boolean) = card {
@@ -399,11 +426,11 @@ class MainActivity : Activity() {
     }
 
     private fun addDevice() = safely("Opening Add device") {
-        if (!hasBt()) { requestPerms(); return@safely }
         sheet("Add a device", listOf(
-            Triple("Search nearby", "Put the device in Bluetooth pairing mode first", Glyph.Shape.SEARCH) to { associate(null) },
-            Triple("Choose a paired device", "Something already in your phone's Bluetooth list", Glyph.Shape.BLUETOOTH) to { pickBonded() },
-            Triple("Let a device find this phone", "Then pair from the projector or TV's own Bluetooth menu", Glyph.Shape.PHONE) to {
+            Triple("Projector or TV on Wi-Fi", "Google TV, Android TV, JMGO. Works like the Google TV remote app. Best choice.", Glyph.Shape.DEVICES) to { findTvs() },
+            Triple("Bluetooth: search nearby", "Keyboard-and-mouse mode for PCs and other devices. Put it in pairing mode first.", Glyph.Shape.SEARCH) to { associate(null) },
+            Triple("Bluetooth: choose a paired device", "Something already in your phone's Bluetooth list", Glyph.Shape.BLUETOOTH) to { pickBonded() },
+            Triple("Bluetooth: let a device find this phone", "Then pair from the device's own Bluetooth menu", Glyph.Shape.PHONE) to {
                 startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
                     .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120))
                 toast("After pairing, come back and choose “Choose a paired device”")
@@ -411,9 +438,233 @@ class MainActivity : Activity() {
         ))
     }
 
+    // ---- Wi-Fi TVs ------------------------------------------------------------------------
+
+    private var discovery: TvDiscovery? = null
+    private var pairing: AtvPairing? = null
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "pairing").apply { isDaemon = true } }
+
+    private fun stopDiscovery() {
+        discovery?.stop()
+        discovery = null
+    }
+
+    /** Lists Google TV / Android TV devices as they're discovered on the Wi-Fi. */
+    private fun findTvs() = safely("Searching Wi-Fi") {
+        dialog?.dismiss()
+        stopDiscovery()
+        val body = vbox { setPadding(Ui.dp(18), Ui.dp(20), Ui.dp(18), Ui.dp(12)) }
+        body.addView(label("Projectors and TVs on Wi-Fi", 20f, bold = true), lp().margins(l = 4))
+        val status = label("Looking… the TV must be on and on the same Wi-Fi as this phone.", 14f, p.muted)
+        body.addView(status, lp().margins(l = 4, t = 4, b = 8))
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        body.addView(pickerRow("Enter its IP address", "If it isn't listed. It's in the TV's network settings.", Glyph.Shape.SEARCH, false) {
+            dialog?.dismiss(); askIp()
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        val known = Prefs.tvs(this).map { it.svc }.toSet()
+        val d = TvDiscovery(this) { f ->
+            runOnUiThread {
+                if (dialog?.isShowing != true) return@runOnUiThread
+                status.text = "Tap your TV to pair with it."
+                list.addView(pickerRow(f.svc + if (f.svc in known) "  ·  already added" else "", f.host, Glyph.Shape.DEVICES, false) {
+                    dialog?.dismiss(); startPairing(f.svc, f.host)
+                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            }
+        }
+        discovery = d
+        dialog = AlertDialog.Builder(this).setView(ScrollView(this).apply { addView(body) }).create().apply {
+            window?.setBackgroundDrawable(android.graphics.drawable.InsetDrawable(Ui.rounded(p.surface, 26), Ui.dp(16)))
+            setOnDismissListener { stopDiscovery() }
+            show()
+        }
+        d.start()
+        ui.postDelayed({
+            if (list.childCount == 0 && dialog?.isShowing == true) {
+                status.text = "Nothing found yet. Check the TV is on and on this Wi-Fi (not a guest network), or enter its IP address."
+            }
+        }, 10_000)
+    }
+
+    private fun styledField(hint: String, inputType: Int, maxLen: Int): EditText = EditText(this).apply {
+        this.hint = hint
+        setTextColor(p.text)
+        setHintTextColor(p.muted)
+        textSize = 20f
+        isSingleLine = true
+        this.inputType = inputType
+        filters = arrayOf(InputFilter.LengthFilter(maxLen))
+        background = Ui.rounded(p.surface2, 14)
+        setPadding(Ui.dp(16), Ui.dp(14), Ui.dp(16), Ui.dp(14))
+    }
+
+    private fun showDialog(body: View, focus: View? = null) {
+        dialog?.dismiss()
+        dialog = AlertDialog.Builder(this).setView(body).create().apply {
+            window?.setBackgroundDrawable(android.graphics.drawable.InsetDrawable(Ui.rounded(p.surface, 26), Ui.dp(16)))
+            if (focus != null) {
+                // Custom dialog views don't open the keyboard unless the window is allowed to take focus.
+                window?.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+                window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+            }
+            show()
+        }
+        focus?.requestFocus()
+    }
+
+    private fun askIp() {
+        val field = styledField("192.168.1.50", InputType.TYPE_CLASS_PHONE, 15)
+        val err = label("", 13.5f, p.bad)
+        showDialog(vbox {
+            setPadding(Ui.dp(22), Ui.dp(22), Ui.dp(22), Ui.dp(16))
+            addView(label("TV address", 20f, bold = true))
+            addView(label("On the TV: Settings → Network → your Wi-Fi → IP address.", 14.5f, p.muted), lp().margins(t = 8, b = 14))
+            addView(field, lp())
+            addView(err, lp().margins(t = 8))
+            addView(hbox {
+                gravity = Gravity.END
+                addView(pill("Cancel", BtnStyle.TEXT) { dialog?.dismiss() })
+                addView(pill("Next", BtnStyle.PRIMARY) {
+                    val ip = field.text.toString().trim()
+                    if (!Regex("^(\\d{1,3}\\.){3}\\d{1,3}$").matches(ip)) { err.text = "That doesn't look like an IP address."; return@pill }
+                    dialog?.dismiss()
+                    startPairing(ip, ip)
+                }, lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(l = 8))
+            }, lp().margins(t = 14))
+        }, focus = field)
+    }
+
+    private fun startPairing(svc: String, host: String) {
+        showDialog(vbox {
+            setPadding(Ui.dp(22), Ui.dp(26), Ui.dp(22), Ui.dp(26))
+            addView(label("Contacting $svc…", 18f, bold = true))
+            addView(label("A code will appear on the TV screen.", 14.5f, p.muted), lp().margins(t = 6))
+        })
+        val wait = dialog
+        worker.execute {
+            val pr = AtvPairing(Prefs.identity(this), host, "Hand Bridge")
+            try {
+                pr.start()
+                runOnUiThread { wait?.dismiss(); pairing = pr; askCode(svc, host, pr) }
+            } catch (e: Exception) {
+                runCatching { pr.close() }
+                android.util.Log.e("HandBridge", "pairing start failed", e)
+                runOnUiThread { wait?.dismiss(); toast("Couldn't reach $svc ($host): ${e.message ?: e.javaClass.simpleName}") }
+            }
+        }
+    }
+
+    private fun askCode(svc: String, host: String, pr: AtvPairing) {
+        val field = styledField("Code from the TV", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS, 6)
+        val msg = label("", 13.5f, p.bad)
+        var working = false
+        showDialog(vbox {
+            setPadding(Ui.dp(22), Ui.dp(22), Ui.dp(22), Ui.dp(16))
+            addView(label("Enter the code", 20f, bold = true))
+            addView(label("$svc is showing a 6-character code. Type it here.", 14.5f, p.muted), lp().margins(t = 8, b = 14))
+            addView(field, lp())
+            addView(msg, lp().margins(t = 8))
+            addView(hbox {
+                gravity = Gravity.END
+                addView(pill("Cancel", BtnStyle.TEXT) { pr.close(); pairing = null; dialog?.dismiss() })
+                addView(pill("Pair", BtnStyle.PRIMARY) {
+                    if (working) return@pill
+                    val code = field.text.toString().trim().uppercase()
+                    if (!Polo.isValidCode(code)) { msg.text = "The code is 6 letters or numbers (0-9, A-F)."; return@pill }
+                    working = true
+                    msg.setTextColor(p.muted); msg.text = "Checking…"
+                    val shown = dialog
+                    worker.execute {
+                        try {
+                            pr.finish(code)
+                            val cert = pr.serverCert ?: throw java.io.IOException("no certificate")
+                            val info = TvInfo.parse(cert)
+                            val tv = Tv(
+                                id = info.mac ?: host, name = info.name ?: svc, host = host, mac = info.mac,
+                                pin = PinTrust.fingerprint(cert), auto = true, svc = svc
+                            )
+                            Prefs.upsertTv(this@MainActivity, tv)
+                            pr.close()
+                            runOnUiThread {
+                                pairing = null
+                                shown?.dismiss()
+                                TvManager.connect(this@MainActivity, tv)
+                                showTab(Tab.DEVICES)
+                                toast("${tv.name} added. Connecting…")
+                            }
+                        } catch (e: WrongCode) {
+                            runOnUiThread { working = false; msg.setTextColor(p.bad); msg.text = e.message }
+                        } catch (e: Exception) {
+                            android.util.Log.e("HandBridge", "pairing failed", e)
+                            runOnUiThread { working = false; msg.setTextColor(p.bad); msg.text = "Pairing failed: ${e.message ?: e.javaClass.simpleName}. Cancel and try again." }
+                        }
+                    }
+                }, lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(l = 8))
+            }, lp().margins(t = 14))
+        }, focus = field)
+    }
+
+    private fun tvCard(t: Tv): LinearLayout = card {
+        val mine = TvManager.tv?.id == t.id
+        val state = if (mine) TvManager.state else TvState.IDLE
+        val live = mine && TvManager.connected
+        addView(hbox {
+            addView(FrameLayout(context).apply {
+                background = Ui.rounded(Ui.tint(p.accent, 0x22), 14)
+                addView(Glyph(context, Glyph.Shape.DEVICES, p.accent, 22), FrameLayout.LayoutParams(Ui.dp(22), Ui.dp(22), Gravity.CENTER))
+            }, lp(Ui.dp(46), Ui.dp(46)).margins(r = 14))
+            addView(vbox {
+                addView(label(t.name, 17f, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                addView(label("${t.host} · Wi-Fi remote", 12.5f, p.muted), lp().margins(t = 2))
+            }, lp(0, weight = 1f).margins(r = 8))
+            addView(when {
+                live -> chip("Connected", p.good, dot = true)
+                state == TvState.CONNECTING -> chip("Connecting…", p.accent, dot = true)
+                state == TvState.NEEDS_PAIRING -> chip("Needs pairing", p.warn, dot = true)
+                state == TvState.UNREACHABLE -> chip("Can't reach", p.warn, dot = true)
+                else -> chip("Not connected", p.muted)
+            })
+        })
+        val help = when {
+            live -> "Works like the Google TV remote app: arrows, OK, back, home, volume and power."
+            state == TvState.NEEDS_PAIRING -> "The TV no longer recognises this phone. Pair again to fix it."
+            state == TvState.UNREACHABLE -> "Can't reach it. Is it switched on and on the same Wi-Fi as this phone? Many projectors switch Wi-Fi off in standby: turn it on with its own remote, then tap Connect."
+            else -> null
+        }
+        if (help != null) addView(label(help, 13f, if (state == TvState.IDLE || live) p.muted else p.warn), lp().margins(t = 12))
+        addView(divider(), lp(h = Ui.dp(1)).margins(t = 12))
+        addView(toggleRow("Connect automatically", "Whenever this phone joins its Wi-Fi", t.auto) { on ->
+            Prefs.upsertTv(this@MainActivity, t.copy(auto = on))
+        })
+        addView(hbox {
+            addView(
+                when {
+                    live -> pill("Disconnect", BtnStyle.SECONDARY) { TvManager.disconnect() }
+                    state == TvState.NEEDS_PAIRING -> pill("Pair again", BtnStyle.PRIMARY) { startPairing(t.svc, t.host) }
+                    else -> pill("Connect", BtnStyle.PRIMARY, Glyph.Shape.DEVICES) { TvManager.connect(this@MainActivity, t) }
+                },
+                lp(0, weight = 1f).margins(r = 10)
+            )
+            addView(pill("Forget", BtnStyle.DANGER) {
+                confirm("Forget ${t.name}?", "This phone will stop controlling it. You can add it again later.", "Forget") {
+                    if (TvManager.tv?.id == t.id) TvManager.disconnect()
+                    Prefs.removeTv(this@MainActivity, t.id)
+                    rebuild()
+                }
+            })
+        }, lp().margins(t = 6))
+        if (!live && t.mac != null) {
+            addView(pill("Try to switch it on (Wake-on-LAN)", BtnStyle.TEXT) {
+                TvManager.wake(this@MainActivity, t)
+                toast("Sent a wake signal. If the TV supports it, it connects in about 30 seconds.")
+            }, lp().margins(t = 4))
+        }
+    }
+
     // ---- gestures -------------------------------------------------------------------------
 
     private fun actionIcon(a: Action) = when (a) {
+        Action.POWER -> Glyph.Shape.POWER
         Action.UP, Action.SCROLL_UP -> Glyph.Shape.UP
         Action.DOWN, Action.SCROLL_DOWN -> Glyph.Shape.DOWN
         Action.LEFT -> Glyph.Shape.LEFT
@@ -532,9 +783,12 @@ class MainActivity : Activity() {
         val hid = Bridge.hid(this)
         val host = hid.host
         val mode = Bridge.activeMode(this)
+        val tvLive = TvManager.connectedTv()
         page.addView(card {
             setPadding(Ui.dp(14), Ui.dp(6), Ui.dp(14), Ui.dp(6))
-            addView(if (host != null) listRow("Controlling ${host.name ?: host.address}", "${modeName(mode)} mode", modeIcon(mode), p.good,
+            addView(if (tvLive != null) listRow("Controlling ${tvLive.name}", "Wi-Fi remote", Glyph.Shape.DEVICES, p.good,
+                trailing = chip("Live", p.good, dot = true))
+            else if (host != null) listRow("Controlling ${host.name ?: host.address}", "${modeName(mode)} mode", modeIcon(mode), p.good,
                 trailing = chip("Live", p.good, dot = true))
             else listRow("Controlling this phone", "Connect a device to control it from here", Glyph.Shape.PHONE, p.muted) { showTab(Tab.DEVICES) })
         })
@@ -588,9 +842,10 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             addView(row(key(Action.PREV, Glyph.Shape.PREV, "Previous"), key(Action.PLAY_PAUSE, Glyph.Shape.PLAY_PAUSE, "Play"), key(Action.NEXT, Glyph.Shape.NEXT, "Next")))
             addView(row(key(Action.VOL_DOWN, Glyph.Shape.VOL_DOWN, "Vol −"), key(Action.MUTE, Glyph.Shape.MUTE, "Mute"), key(Action.VOL_UP, Glyph.Shape.VOL_UP, "Vol +")), lp().margins(t = 12))
+            addView(row(spacer(), key(Action.POWER, Glyph.Shape.POWER, "Power"), spacer()), lp().margins(t = 12))
         })
-        val sig = host?.address
-        return { if (Bridge.hid(this).host?.address != sig) rebuild() }
+        val sig = "${host?.address}|${tvLive?.id}"
+        return { if ("${Bridge.hid(this).host?.address}|${TvManager.connectedTv()?.id}" != sig) rebuild() }
     }
 
     // ---- dialogs --------------------------------------------------------------------------

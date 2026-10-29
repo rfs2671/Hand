@@ -32,6 +32,23 @@ remembered device also starts the bridge. Classic-Bluetooth devices only wake th
 they come into range, so the bridge also retries the last device each time the screen turns on. The bridge restarts
 after a reboot.
 
+## Wi-Fi remote for Google TV / Android TV / JMGO (recommended)
+Many projectors and TVs (JMGO N1 Ultra runs Android TV 11) accept the same remote protocol as Google's phone remote
+app. It feels native: real D-pad, OK/Back/Home, volume, play/pause and power, and no Bluetooth pairing is involved.
+*Devices → Add a device → Projector or TV on Wi-Fi*, tap the TV, type the 6-character code it shows, done. The phone
+reconnects by itself when it joins that Wi-Fi, and finds the TV again if its IP address changes.
+
+- The TV and phone must be on the same Wi-Fi (not a guest network).
+- Power: while connected, *Power* toggles the TV. Many TVs shut their network off in standby, so switching one **on**
+  from standby is only best-effort (a Wake-on-LAN signal, if the TV supports it); it depends on the model.
+- While a Wi-Fi TV is connected it takes priority over Bluetooth devices.
+- Map any gesture to *Power on / off* in the Gestures tab.
+
+## Testing the protocol code
+`tools/atvtest/run.sh <scratch dir>` compiles the protocol layer (`app/.../atv`, plain Kotlin) and runs it against a
+fake TV (`mock_tv.py`) that reads the real protobuf definitions: certificate, pairing, handshake, pings, key presses,
+reconnect, certificate pinning, on TLS 1.2 and 1.3. See the script header for what it needs.
+
 ## Air Gestures (Neural Band)
 Air Gestures broadcasts `dev.kb896.airgestures.GESTURE` for every gesture you set to **Send to automation** in Air
 Gestures. Hand Bridge receives it while *Bridge running* is on (*Receive Air Gestures* switch, on by default). Names map

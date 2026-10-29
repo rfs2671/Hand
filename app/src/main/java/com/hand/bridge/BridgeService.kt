@@ -13,6 +13,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.IBinder
 
 /**
@@ -41,7 +45,13 @@ class BridgeService : Service() {
         override fun onReceive(c: Context, i: Intent) {
             hid.start() // re-register if the HID slot was lost and the backoff gave up
             hid.reconnectAuto()
+            TvManager.reconnectAuto(c)
         }
+    }
+
+    // Joining the home Wi-Fi is the moment a Wi-Fi TV becomes reachable.
+    private val wifi = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = TvManager.reconnectAuto(this@BridgeService)
     }
 
     override fun onCreate() {
@@ -54,6 +64,12 @@ class BridgeService : Service() {
         registerReceiver(gestureEvents, IntentFilter(AirGestures.ACTION_GESTURE), Context.RECEIVER_EXPORTED)
         registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
         hid.listeners.add(onChange)
+        TvManager.listeners.add(onChange)
+        runCatching {
+            svc<ConnectivityManager>().registerNetworkCallback(
+                NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), wifi
+            )
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -75,12 +91,15 @@ class BridgeService : Service() {
         hid.start()
         val connect = intent?.getStringExtra(EXTRA_CONNECT)
         if (connect != null) hid.connectWithRetry(connect) else hid.reconnectAuto()
+        TvManager.reconnectAuto(this)
         return START_STICKY
     }
 
     private fun statusText(): String {
         val host = hid.host
+        val tv = TvManager.connectedTv()
         return when {
+            tv != null -> "Connected to ${tv.name} over Wi-Fi"
             host != null -> "Connected to ${host.name ?: host.address}"
             hid.registered -> "Ready — waiting for a device"
             else -> "Starting Bluetooth…"
@@ -110,6 +129,8 @@ class BridgeService : Service() {
 
     override fun onDestroy() {
         hid.listeners.remove(onChange)
+        TvManager.listeners.remove(onChange)
+        runCatching { svc<ConnectivityManager>().unregisterNetworkCallback(wifi) }
         runCatching { unregisterReceiver(btState) }
         runCatching { unregisterReceiver(gestureEvents) }
         runCatching { unregisterReceiver(screenOn) }
