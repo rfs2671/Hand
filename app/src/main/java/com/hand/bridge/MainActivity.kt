@@ -47,6 +47,7 @@ class MainActivity : Activity() {
         HOME("Home", Glyph.Shape.HOME),
         DEVICES("Devices", Glyph.Shape.DEVICES),
         GESTURES("Gestures", Glyph.Shape.GESTURE),
+        TEST("Test", Glyph.Shape.CHECK),
         REMOTE("Remote", Glyph.Shape.REMOTE)
     }
 
@@ -115,6 +116,7 @@ class MainActivity : Activity() {
         if (monitorOn) { runCatching { unregisterReceiver(monitor) }; monitorOn = false }
         Bridge.learn = null
         dialogTick = null
+        AirGestures.testing = false
         dialog?.dismiss()
         stopDiscovery()
         pairing?.close()
@@ -174,6 +176,7 @@ class MainActivity : Activity() {
 
     private fun showTab(t: Tab) {
         if (t != tab) Bridge.learn = null
+        AirGestures.testing = t == Tab.TEST
         tab = t
         paintNav()
         page.removeAllViews()
@@ -182,12 +185,14 @@ class MainActivity : Activity() {
             Tab.HOME -> "Your band, any screen"
             Tab.DEVICES -> "What your gestures control"
             Tab.GESTURES -> "What each gesture does"
+            Tab.TEST -> "Try each gesture and see it work"
             Tab.REMOTE -> "Test and control by touch"
         }
         refresher = when (t) {
             Tab.HOME -> homePage()
             Tab.DEVICES -> devicesPage()
             Tab.GESTURES -> gesturesPage()
+            Tab.TEST -> testPage()
             Tab.REMOTE -> remotePage()
         }
         refresher?.invoke()
@@ -895,6 +900,99 @@ class MainActivity : Activity() {
             subtitle = if (captured) "What should it do?" else null,
             selected = rows.indexOf(cur)
         )
+    }
+
+    // ---- test -----------------------------------------------------------------------------
+
+    private fun testGroup(key: String) = when {
+        "SWIPE" in key -> "Swipes"
+        "DRAG" in key -> "Drags"
+        "DIAL" in key || "LEFT_RIGHT" in key || "UP_DOWN" in key -> "Dial and slides"
+        else -> "Taps and holds"
+    }
+
+    /**
+     * Two checks per gesture: does it arrive from the band, and can its action be carried out on the
+     * connected device. Tapping a row tries the action without the band.
+     */
+    private fun testPage(): () -> Unit {
+        AirGestures.sendWhileTesting = TvManager.connected || Bridge.hid(this).host != null
+        val summary = label("", 17f, bold = true)
+        val bar = hbox { background = Ui.rounded(p.surface2, 4) }
+        page.addView(card {
+            addView(summary)
+            addView(bar, lp(h = Ui.dp(6)).margins(t = 10, b = 8))
+            addView(label("Do each gesture on your band. A row turns green when Hand Bridge receives it and its action is sent. Tap a row to try its action without the band.", 14f, p.muted))
+            addView(divider(), lp(h = Ui.dp(1)).margins(t = 12))
+            addView(toggleRow("Send actions to the connected device", "Off: gestures are recognised and shown, but nothing is sent anywhere.", AirGestures.sendWhileTesting) {
+                AirGestures.sendWhileTesting = it
+            })
+            addView(pill("Reset results", BtnStyle.TEXT) { GestureTests.clear(); rebuild() })
+        })
+        val rows = vbox {}
+        page.addView(rows)
+
+        fun draw() {
+            val map = Prefs.mapping(this)
+            val order = Actions.defaults.keys.toList()
+            val keys = (map.keys + GestureTests.keys()).filter { Actions.isBand(it) && it != "EVT_TEST" }.distinct()
+                .sortedWith(compareBy({ order.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }, { it }))
+            val seen = GestureTests.seenFromBand(keys)
+            summary.text = "$seen of ${keys.size} gestures seen from your band"
+            bar.removeAllViews()
+            bar.addView(View(this).apply { background = Ui.rounded(p.accent, 4) }, lp(0, Ui.dp(6), seen.toFloat()))
+            bar.addView(View(this), lp(0, Ui.dp(6), (keys.size - seen).coerceAtLeast(0).toFloat()))
+            val target = TvManager.connectedTv()?.name ?: Bridge.hid(this).host?.name ?: "this phone"
+
+            rows.removeAllViews()
+            listOf("Taps and holds", "Swipes", "Drags", "Dial and slides").forEach { group ->
+                val inGroup = keys.filter { testGroup(it) == group }
+                if (inGroup.isEmpty()) return@forEach
+                rows.addView(sectionTitle(group))
+                rows.addView(card {
+                    setPadding(Ui.dp(12), Ui.dp(6), Ui.dp(12), Ui.dp(6))
+                    inGroup.forEachIndexed { n, key ->
+                        if (n > 0) addView(divider())
+                        val action = Actions.resolve(map, key)
+                        val st = GestureTests.status(key, action)
+                        val r = GestureTests.get(key)
+                        val (chip, color) = when (st) {
+                            GestureTests.Status.NOT_TRIED -> "Not tried" to p.muted
+                            GestureTests.Status.WORKS -> "✓ Works" to p.good
+                            GestureTests.Status.BAND_ONLY -> "✓ Received" to p.good
+                            GestureTests.Status.BAND_NOT_SENT -> "Received, not sent" to p.warn
+                            GestureTests.Status.NO_ACTION -> "No action" to p.warn
+                            GestureTests.Status.DEVICE_ONLY -> "Action works" to p.accent
+                            GestureTests.Status.DEVICE_FAILED -> "Couldn't send" to p.bad
+                        }
+                        val sub = buildString {
+                            append(if (action == Action.NONE) "No action assigned" else "→ ${action.label}")
+                            if (r != null && r.bandCount > 0) append(" · received ${r.bandCount}× ${ago(r.bandAt)}")
+                            when (r?.sent) {
+                                true -> append(" · sent to $target")
+                                false -> append(" · couldn't send (nothing connected can do this)")
+                                null -> if (r != null && r.bandCount > 0) append(" · not sent (test only)")
+                            }
+                            if (r == null && action != Action.NONE) append(" · tap to try")
+                        }
+                        addView(listRow(Actions.pretty(key), sub, actionIcon(action), color,
+                            trailing = label(chip, 13.5f, color).apply { gravity = Gravity.END; maxWidth = Ui.dp(130) }) {
+                            if (action == Action.NONE) { toast("This gesture has no action. Pick one on the Gestures tab."); return@listRow }
+                            val ok = Bridge.perform(this@MainActivity, action, discrete = true)
+                            GestureTests.note(key, action, ok, fromBand = false)
+                            if (!ok) toast("Couldn't send. Connect a device that can do this first.")
+                        })
+                    }
+                })
+            }
+            if (keys.isEmpty()) rows.addView(card { addView(label("No band gestures are set up yet.", 14f, p.muted)) })
+        }
+
+        var sig = Long.MIN_VALUE
+        return {
+            val s = GestureTests.signature() + System.currentTimeMillis() / 5000
+            if (s != sig) { sig = s; draw() }
+        }
     }
 
     // ---- remote ---------------------------------------------------------------------------

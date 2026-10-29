@@ -59,7 +59,24 @@ object AirGestures {
     /** Seen by the open app screen. Only shows it: nothing is sent to any device from here. */
     fun observe(ctx: Context, receiver: BroadcastReceiver, i: Intent) {
         if (serviceListening) return // the service already recorded this one
-        record(i, accept(ctx, receiver))
+        val reason = accept(ctx, receiver)
+        record(i, reason)
+        // Nothing is sent from here, but the Test tab still wants to know the gesture arrived.
+        if (reason == null) keyOf(i)?.let { GestureTests.note(it, Actions.resolve(Prefs.mapping(ctx), it), sent = null, fromBand = true) }
+    }
+
+    /** True while the Test tab is open. */
+    @Volatile var testing = false
+    /** On the Test tab: also carry out each gesture's action on the connected device (otherwise only recognise it). */
+    @Volatile var sendWhileTesting = true
+
+    /** The mapping key for a gesture message (a dial/slide gets _UP/_DOWN from its steps), or null for "test"/empty. */
+    private fun keyOf(i: Intent): String? {
+        val gesture = i.getStringExtra("gesture")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val base = "EVT_" + gesture.uppercase().replace(' ', '_').replace('-', '_')
+        if (base == "EVT_TEST") return null
+        val steps = i.getIntExtra("steps", 0)
+        return if (steps == 0) base else Actions.stepKey(base, steps)
     }
 
     fun installed(ctx: Context) = PKGS.any {
@@ -117,17 +134,18 @@ object AirGestures {
         val base = "EVT_" + gesture.uppercase().replace(' ', '_').replace('-', '_')
         if (base == "EVT_TEST") { Bridge.lastInput = base; return }
         val steps = i.getIntExtra("steps", 0)
-        if (steps == 0) {
-            Trace.add("air: $base -> ${Actions.resolve(Prefs.mapping(ctx), base)}")
-            Bridge.handle(ctx, base, discrete = true)
-            return
+        // A dial/slide becomes one mapped input per step, e.g. EVT_DIAL_UP x3 (capped so a fast slide can't flood the host).
+        val key = if (steps == 0) base else Actions.stepKey(base, steps)
+        val action = Actions.resolve(Prefs.mapping(ctx), key)
+        val n = if (steps == 0) 1 else minOf(abs(steps), Actions.stepCap(action))
+        Trace.add("air: $key${if (n > 1) " x$n" else ""} -> $action")
+        var sent: Boolean? = null
+        if (!testing || sendWhileTesting) {
+            var any = false
+            repeat(n) { if (Bridge.handle(ctx, key, discrete = true)) any = true }
+            sent = any
         }
-        // Dial/slider: one mapped input per step, e.g. EVT_DIAL_UP x3 (capped so a fast slide can't flood the host).
-        val name = Actions.stepKey(base, steps)
-        val action = Actions.resolve(Prefs.mapping(ctx), name)
-        val n = minOf(abs(steps), Actions.stepCap(action))
-        Trace.add("air: $name x$n -> $action")
-        repeat(n) { Bridge.handle(ctx, name, discrete = true) }
+        GestureTests.note(key, action, sent, fromBand = true)
     }
 }
 

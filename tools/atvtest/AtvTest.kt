@@ -1,6 +1,8 @@
 import com.hand.bridge.atv.*
 import com.hand.bridge.Action
 import com.hand.bridge.Actions
+import com.hand.bridge.GestureTests
+import com.hand.bridge.GestureTests.Status
 import java.io.File
 import java.security.cert.X509Certificate
 import java.util.Base64
@@ -147,6 +149,31 @@ fun main(args: Array<String>) {
     check("unknown gesture has no action", act("EVT_SOMETHING_NEW") == Action.NONE)
     check("fast slides send few keys, volume more", Actions.stepCap(Action.RIGHT) == 6 && Actions.stepCap(Action.SCROLL_DOWN) == 6 && Actions.stepCap(Action.VOL_UP) == 20)
     check("readable names for steps", Actions.pretty("EVT_INDEX_LEFT_RIGHT_UP") == "Index left right (+)" && Actions.pretty("EVT_DIAL_DOWN") == "Dial (−)" && Actions.pretty("EVT_SWIPE_UP") == "Swipe up")
+
+    // Gesture tester bookkeeping.
+    GestureTests.clear()
+    check("untried gesture", GestureTests.status("EVT_INDEX_TAP", Action.SELECT) == Status.NOT_TRIED)
+    GestureTests.note("EVT_INDEX_TAP", Action.SELECT, sent = true, fromBand = true)
+    check("band + sent = works", GestureTests.status("EVT_INDEX_TAP", Action.SELECT) == Status.WORKS)
+    GestureTests.note("EVT_SWIPE_UP", Action.UP, sent = null, fromBand = true)
+    check("band only (test mode) is not claimed to work", GestureTests.status("EVT_SWIPE_UP", Action.UP) == Status.BAND_ONLY)
+    GestureTests.note("EVT_SWIPE_DOWN", Action.DOWN, sent = false, fromBand = true)
+    check("band but nothing could send it", GestureTests.status("EVT_SWIPE_DOWN", Action.DOWN) == Status.BAND_NOT_SENT)
+    GestureTests.note("EVT_INDEX_HOLD", Action.NONE, sent = false, fromBand = true)
+    check("band but no action assigned", GestureTests.status("EVT_INDEX_HOLD", Action.NONE) == Status.NO_ACTION)
+    GestureTests.note("EVT_SWIPE_LEFT", Action.LEFT, sent = true, fromBand = false)
+    check("tried by hand only: device works, band unconfirmed", GestureTests.status("EVT_SWIPE_LEFT", Action.LEFT) == Status.DEVICE_ONLY && GestureTests.get("EVT_SWIPE_LEFT")!!.bandCount == 0)
+    GestureTests.note("EVT_SWIPE_RIGHT", Action.RIGHT, sent = false, fromBand = false)
+    check("tried by hand and failed", GestureTests.status("EVT_SWIPE_RIGHT", Action.RIGHT) == Status.DEVICE_FAILED)
+    GestureTests.note("EVT_SWIPE_LEFT", Action.LEFT, sent = null, fromBand = true)
+    check("then the band gesture arrives: both confirmed", GestureTests.status("EVT_SWIPE_LEFT", Action.LEFT) == Status.WORKS)
+    GestureTests.note("EVT_INDEX_TAP", Action.SELECT, sent = null, fromBand = true)
+    check("a later test-only receipt keeps the earlier sent result", GestureTests.status("EVT_INDEX_TAP", Action.SELECT) == Status.WORKS && GestureTests.get("EVT_INDEX_TAP")!!.bandCount == 2)
+    check("count of gestures seen from the band", GestureTests.seenFromBand(listOf("EVT_INDEX_TAP", "EVT_SWIPE_UP", "EVT_SWIPE_RIGHT", "EVT_NEVER")) == 2)
+    val before = GestureTests.signature(); GestureTests.note("EVT_INDEX_TAP", Action.SELECT, true, true, now = System.currentTimeMillis() + 5)
+    check("signature changes when results change", GestureTests.signature() != before)
+    GestureTests.clear()
+    check("reset clears results", GestureTests.keys().isEmpty())
 
     // Wake-on-LAN packet: 6 x FF, then the MAC 16 times.
     val magic = WakeOnLan.packet("aa:bb:cc:dd:ee:ff")

@@ -78,6 +78,10 @@ Security: Air Gestures' broadcast is unprotected, so another app on the phone co
 Bridge rejects a broadcast whose sender identifies itself as a different app, but senders can stay anonymous, so this
 narrows the risk rather than removing it. Don't install apps you don't trust alongside it.
 
+**Test tab:** lists every gesture with two checks: did it arrive from the band, and was its action sent to the connected
+device. Tap a row to try the action without the band. Turn off "Send actions to the connected device" to test recognition
+only; nothing is sent while it's off.
+
 ## Optional: Tasker / MacroDroid
 Enable *Allow Tasker / MacroDroid intents* and send a broadcast with action `com.hand.bridge.GESTURE`, **package
 `com.hand.bridge`**, and extra `gesture=pinch` (mapped as `EVT_PINCH`, plus `steps` for dials) or `action=SELECT`.
