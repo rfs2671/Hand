@@ -116,15 +116,18 @@ object AirGestures {
         val gesture = i.getStringExtra("gesture")?.trim()?.takeIf { it.isNotEmpty() } ?: return
         val base = "EVT_" + gesture.uppercase().replace(' ', '_').replace('-', '_')
         if (base == "EVT_TEST") { Bridge.lastInput = base; return }
-        Trace.add("air: $base -> ${Prefs.mapping(ctx)[base] ?: "no action assigned"}")
         val steps = i.getIntExtra("steps", 0)
         if (steps == 0) {
+            Trace.add("air: $base -> ${Actions.resolve(Prefs.mapping(ctx), base)}")
             Bridge.handle(ctx, base, discrete = true)
             return
         }
-        // Dial/slider: one mapped input per step, e.g. EVT_DIAL_UP x3. Capped so a burst can't flood the host.
-        val name = base + if (steps > 0) "_UP" else "_DOWN"
-        repeat(minOf(abs(steps), 20)) { Bridge.handle(ctx, name, discrete = true) }
+        // Dial/slider: one mapped input per step, e.g. EVT_DIAL_UP x3 (capped so a fast slide can't flood the host).
+        val name = Actions.stepKey(base, steps)
+        val action = Actions.resolve(Prefs.mapping(ctx), name)
+        val n = minOf(abs(steps), Actions.stepCap(action))
+        Trace.add("air: $name x$n -> $action")
+        repeat(n) { Bridge.handle(ctx, name, discrete = true) }
     }
 }
 

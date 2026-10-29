@@ -6,7 +6,7 @@ KCP="$(cat "$SCRATCH/kcp.txt")"; STD=/opt/gradle/lib/kotlin-stdlib-2.0.21.jar
 SRC="$SCRATCH/atv_src/androidtvremote2-0.3.2/src/androidtvremote2"   # only read as data
 WORK="$SCRATCH/atvwork"; rm -rf "$WORK" "$SCRATCH/atv_cls"; mkdir -p "$WORK" "$SCRATCH/atv_cls"
 java -cp "$KCP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -cp "$STD" -jvm-target 17 \
-  -d "$SCRATCH/atv_cls" "$REPO/app/src/main/java/com/hand/bridge/atv" "$HERE/AtvTest.kt" 2>&1 | grep -v JAVA_TOOL
+  -d "$SCRATCH/atv_cls" "$REPO/app/src/main/java/com/hand/bridge/atv" "$REPO/app/src/main/java/com/hand/bridge/Actions.kt" "$HERE/AtvTest.kt" 2>&1 | grep -v JAVA_TOOL
 PP=46467; RP=46466
 RUN="java -cp $SCRATCH/atv_cls:$STD AtvTestKt $WORK"
 $RUN gen $PP $RP || exit 1

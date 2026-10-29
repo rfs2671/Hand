@@ -317,7 +317,7 @@ class MainActivity : Activity() {
                 val key = "EVT_" + e.gesture.trim().uppercase().replace(' ', '_').replace('-', '_')
                 val name = if (e.gesture == "test") "Test from Air Gestures"
                     else Actions.pretty(key) + if (e.steps != 0) "  ${if (e.steps > 0) "+" else ""}${e.steps}" else ""
-                val act = Actions.parse(map[if (e.steps != 0) key + if (e.steps > 0) "_UP" else "_DOWN" else key])
+                val act = Actions.resolve(map, if (e.steps != 0) Actions.stepKey(key, e.steps) else key)
                 val (what, color) = when {
                     e.note != null -> "Ignored: ${e.note}" to p.warn
                     e.gesture == "test" -> "Received ✓" to p.good

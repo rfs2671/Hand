@@ -1,4 +1,6 @@
 import com.hand.bridge.atv.*
+import com.hand.bridge.Action
+import com.hand.bridge.Actions
 import java.io.File
 import java.security.cert.X509Certificate
 import java.util.Base64
@@ -125,6 +127,26 @@ fun main(args: Array<String>) {
     check("probe reads the TV's name, MAC and fingerprint", probe != null && probe.info.name == "Mock Projector" &&
         probe.info.mac == "AA:BB:CC:DD:EE:FF" && probe.sha256 == pin, probe?.info?.name ?: "null")
     check("probe of a closed port returns null", TvProbe.identify(id, "127.0.0.1", 1, 1000) == null)
+
+    // Gesture names Air Gestures sends -> default actions. Slides ("scroll") send signed steps.
+    val defaults = Actions.defaults
+    fun act(key: String) = Actions.resolve(defaults, key)
+    val tapsAndSwipes = listOf("swipe_up", "swipe_down", "swipe_left", "swipe_right", "index_tap", "index_double", "index_triple",
+        "index_hold", "middle_tap", "middle_double") + listOf("left", "right", "up", "down", "toward", "away").map { "index_drag_$it" }
+    val unmapped = tapsAndSwipes.filter { act("EVT_" + it.uppercase()) == Action.NONE }
+    check("every tap, swipe and index drag has a default action", unmapped.isEmpty(), unmapped.toString())
+    check("slide key naming", Actions.stepKey("EVT_INDEX_LEFT_RIGHT", 3) == "EVT_INDEX_LEFT_RIGHT_UP" && Actions.stepKey("EVT_INDEX_LEFT_RIGHT", -2) == "EVT_INDEX_LEFT_RIGHT_DOWN")
+    check("index slide right/left", act("EVT_INDEX_LEFT_RIGHT_UP") == Action.RIGHT && act("EVT_INDEX_LEFT_RIGHT_DOWN") == Action.LEFT)
+    check("index slide up/down", act("EVT_INDEX_UP_DOWN_UP") == Action.UP && act("EVT_INDEX_UP_DOWN_DOWN") == Action.DOWN)
+    check("middle slides mapped too", act("EVT_MIDDLE_LEFT_RIGHT_UP") == Action.RIGHT && act("EVT_MIDDLE_UP_DOWN_DOWN") == Action.DOWN)
+    check("unlisted slider is understood from its name", act("EVT_THUMB_LEFT_RIGHT_UP") == Action.RIGHT && act("EVT_THUMB_UP_DOWN_DOWN") == Action.DOWN &&
+        act("EVT_X_RIGHT_LEFT_UP") == Action.LEFT && act("EVT_X_DOWN_UP_UP") == Action.DOWN)
+    check("dial still volume", act("EVT_DIAL_UP") == Action.VOL_UP && act("EVT_DIAL_DOWN") == Action.VOL_DOWN)
+    check("a user's 'nothing' beats the built-in meaning", Actions.resolve(mapOf("EVT_INDEX_LEFT_RIGHT_UP" to "NONE"), "EVT_INDEX_LEFT_RIGHT_UP") == Action.NONE)
+    check("a user's choice beats the name", Actions.resolve(mapOf("EVT_INDEX_LEFT_RIGHT_UP" to "VOL_UP"), "EVT_INDEX_LEFT_RIGHT_UP") == Action.VOL_UP)
+    check("unknown gesture has no action", act("EVT_SOMETHING_NEW") == Action.NONE)
+    check("fast slides send few keys, volume more", Actions.stepCap(Action.RIGHT) == 6 && Actions.stepCap(Action.SCROLL_DOWN) == 6 && Actions.stepCap(Action.VOL_UP) == 20)
+    check("readable names for steps", Actions.pretty("EVT_INDEX_LEFT_RIGHT_UP") == "Index left right (+)" && Actions.pretty("EVT_DIAL_DOWN") == "Dial (−)" && Actions.pretty("EVT_SWIPE_UP") == "Swipe up")
 
     // Wake-on-LAN packet: 6 x FF, then the MAC 16 times.
     val magic = WakeOnLan.packet("aa:bb:cc:dd:ee:ff")

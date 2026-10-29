@@ -30,7 +30,7 @@ object Bridge {
     fun claims(ctx: Context, input: String): Boolean {
         if (learn != null) return true
         if (!Prefs.enabled(ctx)) return false
-        val action = Actions.parse(Prefs.mapping(ctx)[input])
+        val action = Actions.resolve(Prefs.mapping(ctx), input)
         if (action == Action.NONE) return false
         if (action == Action.POWER) return TvManager.connected || Prefs.tvs(ctx).isNotEmpty()
         if (TvManager.connected) return true // a Wi-Fi TV understands every action
@@ -46,7 +46,7 @@ object Bridge {
         lastInput = input
         learn?.let { learn = null; it(input); return true } // one capture, even for a multi-step dial
         if (!claims(ctx, input)) return false
-        val action = Actions.parse(Prefs.mapping(ctx)[input])
+        val action = Actions.resolve(Prefs.mapping(ctx), input)
         return perform(ctx, action, repeat, discrete)
     }
 
