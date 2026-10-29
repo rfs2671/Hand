@@ -31,6 +31,9 @@ class HidBridge(context: Context) {
 
     @Volatile var registered = false
         private set
+    /** Human-readable reason the keyboard/mouse role isn't working, or null. */
+    @Volatile var lastError: String? = null
+        private set
     @Volatile var host: BluetoothDevice? = null
         private set
 
@@ -43,7 +46,9 @@ class HidBridge(context: Context) {
     private val callback = object : BluetoothHidDevice.Callback() {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
             this@HidBridge.registered = registered
+            Trace.add("bt: keyboard/mouse role ${if (registered) "registered" else "NOT registered"}")
             if (registered) {
+                lastError = null
                 reRegisterAttempts = 0
                 host = proxy?.connectedDevices?.firstOrNull()
                 pendingConnect?.let { connectWithRetry(it) }
@@ -57,11 +62,16 @@ class HidBridge(context: Context) {
         }
 
         override fun onConnectionStateChanged(device: BluetoothDevice, state: Int) {
+            Trace.add("bt: ${device.name ?: device.address} -> ${stateName(state)}")
             when (state) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     host = device
                     userDisconnected = null
                     Prefs.setLastHost(ctx, device.address)
+                    // A device that connected to us from its own side (e.g. a projector) is not in the list yet.
+                    if (Prefs.device(ctx, device.address) == null) {
+                        Prefs.upsert(ctx, Dev(device.address, device.name ?: device.address, Mode.MOUSE, true))
+                    }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     if (host?.address == device.address) host = null
@@ -101,7 +111,30 @@ class HidBridge(context: Context) {
             BluetoothHidDeviceAppQosSettings.SERVICE_BEST_EFFORT, 800, 9, 0, 11250,
             BluetoothHidDeviceAppQosSettings.MAX
         )
-        runCatching { hid.registerApp(sdp, null, qos, exec, callback) }
+        val ok = runCatching { hid.registerApp(sdp, null, qos, exec, callback) }.getOrDefault(false)
+        if (!ok) {
+            lastError = "Android refused to let this app act as a Bluetooth keyboard/mouse (another app may be using that role, or this phone doesn't support it)."
+            Trace.add("bt: registerApp returned false")
+            changed()
+        }
+    }
+
+    /** Paired devices and what they are connected to us as (keyboard/mouse role). */
+    fun bondedStates(): List<Triple<String, String, Int>> {
+        val p = proxy
+        return runCatching {
+            adapter?.bondedDevices.orEmpty().map { d ->
+                Triple(d.name ?: "?", d.address, if (p != null) p.getConnectionState(d) else -1)
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun stateName(s: Int) = when (s) {
+        BluetoothProfile.STATE_CONNECTED -> "connected"
+        BluetoothProfile.STATE_CONNECTING -> "connecting"
+        BluetoothProfile.STATE_DISCONNECTING -> "disconnecting"
+        BluetoothProfile.STATE_DISCONNECTED -> "disconnected"
+        else -> "unknown"
     }
 
     private fun scheduleReRegister() {
@@ -185,7 +218,11 @@ class HidBridge(context: Context) {
             val hid = proxy
             if (hid != null && registered) {
                 val dev = runCatching { adapter?.getRemoteDevice(address) }.getOrNull()
-                if (dev != null) hid.connect(dev)
+                if (dev != null) {
+                    val ok = hid.connect(dev)
+                    Trace.add("bt: connect(${dev.name ?: address}) -> $ok")
+                    if (!ok && i == delays.size - 1) lastError = "The projector didn't accept the connection. Pair again from its Bluetooth menu while Hand Bridge is on."
+                }
             }
             if (i + 1 < delays.size) main.postDelayed({ attempt(i + 1) }, delays[i + 1])
             else pendingConnect = null

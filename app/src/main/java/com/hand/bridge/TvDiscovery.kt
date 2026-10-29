@@ -5,41 +5,55 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import java.net.Inet4Address
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
-/** Finds Google TV / Android TV devices on the Wi-Fi (they advertise _androidtvremote2._tcp). */
-class TvDiscovery(ctx: Context, private val onFound: (Found) -> Unit) {
-    class Found(val svc: String, val host: String, val port: Int)
+/**
+ * mDNS search. Google TV / Android TV advertise _androidtvremote2._tcp; most also advertise
+ * _googlecast._tcp (what the Google Home app lists), which we use as a second hint.
+ */
+class TvDiscovery(
+    ctx: Context,
+    private val types: List<String> = listOf(REMOTE, CAST),
+    private val onFound: (Found) -> Unit,
+    private val onError: (String) -> Unit = {}
+) {
+    class Found(val svc: String, val host: String, val port: Int, val type: String, val friendly: String?)
 
     private val nsd = ctx.applicationContext.svc<NsdManager>()
     private val queue = ArrayDeque<NsdServiceInfo>()
     private val seen = HashSet<String>()
+    private val listeners = HashMap<String, NsdManager.DiscoveryListener>()
     private var resolving = false
     @Volatile private var stopped = false
-    private var started = false
 
-    private val discovery = object : NsdManager.DiscoveryListener {
+    private fun listenerFor(type: String) = object : NsdManager.DiscoveryListener {
         override fun onServiceFound(info: NsdServiceInfo) {
-            synchronized(queue) { if (seen.add(info.serviceName)) queue.addLast(info) }
+            Trace.add("mDNS $type: found '${info.serviceName}'")
+            synchronized(queue) { if (seen.add(type + "|" + info.serviceName)) queue.addLast(info) }
             resolveNext()
         }
         override fun onServiceLost(info: NsdServiceInfo) {}
-        override fun onDiscoveryStarted(type: String) {}
-        override fun onDiscoveryStopped(type: String) {}
-        override fun onStartDiscoveryFailed(type: String, code: Int) { started = false }
-        override fun onStopDiscoveryFailed(type: String, code: Int) {}
+        override fun onDiscoveryStarted(t: String) { Trace.add("mDNS $type: searching") }
+        override fun onDiscoveryStopped(t: String) {}
+        override fun onStartDiscoveryFailed(t: String, code: Int) {
+            Trace.add("mDNS $type: start failed ($code)")
+            onError("Wi-Fi search ($type) failed with code $code")
+        }
+        override fun onStopDiscoveryFailed(t: String, code: Int) {}
     }
 
     fun start() {
-        started = true
-        runCatching { nsd.discoverServices(SERVICE, NsdManager.PROTOCOL_DNS_SD, discovery) }
+        for (t in types) {
+            val l = listenerFor(t)
+            listeners[t] = l
+            try { nsd.discoverServices(t, NsdManager.PROTOCOL_DNS_SD, l) }
+            catch (e: Exception) { Trace.add("mDNS $t: ${e.javaClass.simpleName} ${e.message}"); onError("Wi-Fi search failed: ${e.message}") }
+        }
     }
 
     fun stop() {
         stopped = true
-        if (started) runCatching { nsd.stopServiceDiscovery(discovery) }
-        started = false
+        listeners.values.forEach { runCatching { nsd.stopServiceDiscovery(it) } }
+        listeners.clear()
     }
 
     // NsdManager can only resolve one service at a time.
@@ -51,33 +65,30 @@ class TvDiscovery(ctx: Context, private val onFound: (Found) -> Unit) {
         }
         try {
             nsd.resolveService(info, object : NsdManager.ResolveListener {
-                override fun onResolveFailed(i: NsdServiceInfo, code: Int) = done()
+                override fun onResolveFailed(i: NsdServiceInfo, code: Int) {
+                    Trace.add("mDNS: resolve '${i.serviceName}' failed ($code)")
+                    done()
+                }
                 override fun onServiceResolved(r: NsdServiceInfo) {
                     val host = if (Build.VERSION.SDK_INT >= 34) {
                         (r.hostAddresses.firstOrNull { it is Inet4Address } ?: r.hostAddresses.firstOrNull())?.hostAddress
                     } else r.host?.hostAddress
-                    if (host != null && !stopped) onFound(Found(r.serviceName, host.substringBefore('%'), r.port))
+                    val type = if (r.serviceType?.contains("googlecast") == true) CAST else REMOTE
+                    val friendly = r.attributes?.get("fn")?.toString(Charsets.UTF_8)
+                    Trace.add("mDNS: '${r.serviceName}' is at $host:${r.port} ($type${friendly?.let { ", $it" } ?: ""})")
+                    if (host != null && !stopped) onFound(Found(r.serviceName, host.substringBefore('%'), r.port, type, friendly))
                     done()
                 }
                 private fun done() { synchronized(queue) { resolving = false }; resolveNext() }
             })
         } catch (e: Exception) {
+            Trace.add("mDNS: resolve error ${e.message}")
             synchronized(queue) { resolving = false }
         }
     }
 
     companion object {
-        const val SERVICE = "_androidtvremote2._tcp"
-
-        /** Looks for a known TV by its advertised name (its IP may have changed). Blocks up to [timeoutMs]. */
-        fun findHost(ctx: Context, tv: Tv, timeoutMs: Long = 4_000): String? {
-            var host: String? = null
-            val latch = CountDownLatch(1)
-            val d = TvDiscovery(ctx) { if (it.svc == tv.svc) { host = it.host; latch.countDown() } }
-            d.start()
-            latch.await(timeoutMs, TimeUnit.MILLISECONDS)
-            d.stop()
-            return host
-        }
+        const val REMOTE = "_androidtvremote2._tcp"
+        const val CAST = "_googlecast._tcp"
     }
 }

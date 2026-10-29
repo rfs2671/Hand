@@ -58,11 +58,14 @@ class MainActivity : Activity() {
     /** Called every tick to update the visible page in place (or rebuild it when its state changed). */
     private var refresher: (() -> Unit)? = null
     private var dialog: AlertDialog? = null
+    /** Live-updates whatever dialog is open (runs with the screen ticker). */
+    private var dialogTick: (() -> Unit)? = null
 
     private val ui = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
         override fun run() {
             refresher?.invoke()
+            dialogTick?.invoke()
             ui.postDelayed(this, 700)
         }
     }
@@ -101,6 +104,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         ui.removeCallbacks(ticker)
         Bridge.learn = null
+        dialogTick = null
         dialog?.dismiss()
         stopDiscovery()
         pairing?.close()
@@ -209,6 +213,16 @@ class MainActivity : Activity() {
             addView(label("LAST GESTURE", 12f, p.muted, bold = true).apply { letterSpacing = 0.08f })
             addView(lastName, lp().margins(t = 10))
             addView(lastSub, lp().margins(t = 4))
+        })
+
+        page.addView(card {
+            addView(label("Something not working?", 17f, bold = true))
+            addView(label("Copy a report of what the app sees (Bluetooth and Wi-Fi state, device names and addresses, recent events) and paste it in a message.", 14f, p.muted), lp().margins(t = 4, b = 12))
+            addView(pill("Copy report", BtnStyle.SECONDARY) {
+                val cm = getSystemService(android.content.ClipboardManager::class.java)
+                cm?.setPrimaryClip(android.content.ClipData.newPlainText("Hand Bridge report", Diagnostics.report(this@MainActivity)))
+                toast("Report copied. Paste it into a message.")
+            })
         })
 
         var sig = ""
@@ -362,6 +376,19 @@ class MainActivity : Activity() {
         val devs = Prefs.devices(this)
         val tvs = Prefs.tvs(this)
         tvs.forEach { page.addView(tvCard(it)) }
+        // Android's own Bluetooth screen never lists a keyboard/mouse connection like this, so show it here.
+        page.addView(card {
+            setPadding(Ui.dp(14), Ui.dp(6), Ui.dp(14), Ui.dp(6))
+            val h = hid.host
+            val (color, title, sub) = when {
+                h != null -> Triple(p.good, "Bluetooth keyboard and mouse: connected", "Connected to ${h.name ?: h.address}")
+                hid.lastError != null -> Triple(p.warn, "Bluetooth keyboard and mouse: problem", hid.lastError!!)
+                hid.registered -> Triple(p.accent, "Bluetooth keyboard and mouse: ready", "Pair or connect a device below. Android's Bluetooth screen doesn't list this kind of connection.")
+                Prefs.enabled(context) -> Triple(p.warn, "Bluetooth keyboard and mouse: starting…", "Getting Bluetooth ready.")
+                else -> Triple(p.muted, "Bluetooth keyboard and mouse: off", "Turn the bridge on from Home.")
+            }
+            addView(listRow(title, sub, Glyph.Shape.BLUETOOTH, color))
+        })
         if (devs.isEmpty() && tvs.isEmpty()) {
             page.addView(card {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -377,7 +404,7 @@ class MainActivity : Activity() {
             addView(listRow("Using it in the car", "Add the car's Bluetooth and choose Phone. When the car connects, your band controls music and volume.",
                 Glyph.Shape.CAR, p.accent))
         })
-        fun sig() = "${hid.host?.address}|${hid.registered}|${TvManager.state}|${TvManager.connected}"
+        fun sig() = "${hid.host?.address}|${hid.registered}|${hid.lastError}|${TvManager.state}|${TvManager.connected}|${Prefs.devices(this).size}"
         val sig = sig()
         return { if (sig() != sig) rebuild() }
     }
@@ -430,60 +457,101 @@ class MainActivity : Activity() {
             Triple("Projector or TV on Wi-Fi", "Google TV, Android TV, JMGO. Works like the Google TV remote app. Best choice.", Glyph.Shape.DEVICES) to { findTvs() },
             Triple("Bluetooth: search nearby", "Keyboard-and-mouse mode for PCs and other devices. Put it in pairing mode first.", Glyph.Shape.SEARCH) to { associate(null) },
             Triple("Bluetooth: choose a paired device", "Something already in your phone's Bluetooth list", Glyph.Shape.BLUETOOTH) to { pickBonded() },
-            Triple("Bluetooth: let a device find this phone", "Then pair from the device's own Bluetooth menu", Glyph.Shape.PHONE) to {
-                startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
-                    .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120))
-                toast("After pairing, come back and choose “Choose a paired device”")
-            }
+            Triple("Bluetooth: pair from the projector's side", "The projector finds this phone as a keyboard. Use this if the search can't see it.", Glyph.Shape.PHONE) to { pairFromDevice() }
         ))
     }
 
     // ---- Wi-Fi TVs ------------------------------------------------------------------------
 
-    private var discovery: TvDiscovery? = null
+    private var finder: TvFinder? = null
     private var pairing: AtvPairing? = null
     private val worker = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "pairing").apply { isDaemon = true } }
 
     private fun stopDiscovery() {
-        discovery?.stop()
-        discovery = null
+        finder?.stop()
+        finder = null
     }
 
-    /** Lists Google TV / Android TV devices as they're discovered on the Wi-Fi. */
+    /** Lists Google TV / Android TV devices as they're found: mDNS, Google Cast announcements and a network scan. */
     private fun findTvs() = safely("Searching Wi-Fi") {
         dialog?.dismiss()
         stopDiscovery()
         val body = vbox { setPadding(Ui.dp(18), Ui.dp(20), Ui.dp(18), Ui.dp(12)) }
         body.addView(label("Projectors and TVs on Wi-Fi", 20f, bold = true), lp().margins(l = 4))
-        val status = label("Looking… the TV must be on and on the same Wi-Fi as this phone.", 14f, p.muted)
+        val status = label("Searching your Wi-Fi… the TV must be on.", 14f, p.muted)
         body.addView(status, lp().margins(l = 4, t = 4, b = 8))
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        body.addView(pickerRow("Enter its IP address", "If it isn't listed. It's in the TV's network settings.", Glyph.Shape.SEARCH, false) {
+        body.addView(pickerRow("Enter its IP address", "If it isn't listed. Google Home shows it under the device's settings.", Glyph.Shape.SEARCH, false) {
             dialog?.dismiss(); askIp()
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        val known = Prefs.tvs(this).map { it.svc }.toSet()
-        val d = TvDiscovery(this) { f ->
+        val known = Prefs.tvs(this).map { it.id }.toSet()
+        val seen = HashSet<String>()
+        val f = TvFinder(this, { t ->
             runOnUiThread {
-                if (dialog?.isShowing != true) return@runOnUiThread
-                status.text = "Tap your TV to pair with it."
-                list.addView(pickerRow(f.svc + if (f.svc in known) "  ·  already added" else "", f.host, Glyph.Shape.DEVICES, false) {
-                    dialog?.dismiss(); startPairing(f.svc, f.host)
+                if (dialog?.isShowing != true || !seen.add(t.host)) return@runOnUiThread
+                status.text = "Tap your projector or TV to pair with it."
+                val added = (t.mac ?: t.host) in known
+                list.addView(pickerRow(t.name + if (added) "  ·  already added" else "", t.host + (t.mac?.let { "  ·  $it" } ?: ""), Glyph.Shape.DEVICES, false) {
+                    dialog?.dismiss(); startPairing(t.name, t.host)
                 }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             }
-        }
-        discovery = d
+        }, { msg -> runOnUiThread { if (dialog?.isShowing == true && list.childCount == 0) status.text = msg } })
+        finder = f
         dialog = AlertDialog.Builder(this).setView(ScrollView(this).apply { addView(body) }).create().apply {
             window?.setBackgroundDrawable(android.graphics.drawable.InsetDrawable(Ui.rounded(p.surface, 26), Ui.dp(16)))
             setOnDismissListener { stopDiscovery() }
             show()
         }
-        d.start()
-        ui.postDelayed({
-            if (list.childCount == 0 && dialog?.isShowing == true) {
-                status.text = "Nothing found yet. Check the TV is on and on this Wi-Fi (not a guest network), or enter its IP address."
+        f.start()
+    }
+
+    /** Pair from the projector's own Bluetooth menu: the phone shows up there as a keyboard. */
+    private fun pairFromDevice() = safely("Starting Bluetooth pairing") {
+        if (!hasBt()) { requestPerms(); return@safely }
+        if (!Prefs.enabled(this)) BridgeService.start(this)
+        val hid = Bridge.hid(this)
+        hid.start()
+        runCatching {
+            startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300))
+        }
+        val phoneName = runCatching { svc<BluetoothManager>().adapter?.name }.getOrNull() ?: "this phone"
+        val status = label("", 15.5f, p.accent, bold = true)
+        val warn = label("", 13.5f, p.warn)
+        showDialog(vbox {
+            setPadding(Ui.dp(22), Ui.dp(22), Ui.dp(22), Ui.dp(16))
+            addView(label("Pair from the projector", 20f, bold = true))
+            addView(label(
+                "1. On the projector open its Bluetooth or “Add accessory” screen.\n" +
+                "2. Pick “$phoneName” in the list.\n" +
+                "3. Accept the pairing request on this phone.\n\n" +
+                "If the projector already lists this phone, remove it there and in your phone's Bluetooth settings first, then pair again. " +
+                "A projector that paired before Hand Bridge was running never learned that this phone can act as a keyboard and mouse.",
+                14.5f, p.muted
+            ), lp().margins(t = 8, b = 14))
+            addView(status)
+            addView(warn, lp().margins(t = 6))
+            addView(hbox {
+                gravity = Gravity.END
+                addView(pill("Close", BtnStyle.SECONDARY) { dialog?.dismiss() })
+            }, lp().margins(t = 14))
+        })
+        val shown = dialog
+        val t0 = System.currentTimeMillis()
+        dialogTick = {
+            val host = hid.host
+            if (host != null) {
+                status.text = "Connected to ${host.name ?: host.address} ✓"
+                status.setTextColor(p.good)
+                warn.text = ""
+            } else {
+                status.text = "Waiting for the projector to connect…"
+                status.setTextColor(p.accent)
+                warn.text = hid.lastError ?: if (!hid.registered && System.currentTimeMillis() - t0 > 6_000)
+                    "The keyboard/mouse role isn't ready yet. Make sure Bluetooth is on and the bridge is running (Home)." else ""
             }
-        }, 10_000)
+        }
+        shown?.setOnDismissListener { dialogTick = null; showTab(tab) }
     }
 
     private fun styledField(hint: String, inputType: Int, maxLen: Int): EditText = EditText(this).apply {

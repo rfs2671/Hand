@@ -70,6 +70,7 @@ object TvManager {
         dropConnection()
         tv = target
         error = null
+        Trace.add("tv: connecting to ${target.name} at ${target.host}")
         set(TvState.CONNECTING)
         var host = target.host
         val delays = if (afterWake) longArrayOf(0, 5_000, 10_000, 15_000, 20_000, 30_000) else longArrayOf(0, 3_000, 8_000, 20_000)
@@ -84,18 +85,22 @@ object TvManager {
                 tv = now
                 Prefs.setLastTv(ctx, now.id)
                 powered = true
+                Trace.add("tv: connected to ${now.name}")
                 set(TvState.CONNECTED)
                 return
             } catch (e: NeedsPairing) {
+                Trace.add("tv: needs pairing")
                 error = "This phone needs to be paired with the TV again."
                 set(TvState.NEEDS_PAIRING)
                 return
             } catch (e: IOException) {
                 error = e.message
+                Trace.add("tv: connect attempt ${i + 1} failed: ${e.javaClass.simpleName} ${e.message}")
                 // The TV may have a new IP address after a router restart: find it by name.
-                if (i >= 1) TvDiscovery.findHost(ctx, target)?.let { host = it }
+                if (i >= 1) TvFinder.findHost(ctx, target)?.let { host = it }
             }
         }
+        Trace.add("tv: unreachable")
         set(TvState.UNREACHABLE)
     }
 
@@ -103,6 +108,7 @@ object TvManager {
         override fun onPower(on: Boolean) { powered = on; changed() }
         override fun onClosed(reason: String) {
             remote = null
+            Trace.add("tv: connection closed ($reason)")
             error = reason
             set(TvState.IDLE)
             // Standby drops the link too; try again shortly while the bridge is running.

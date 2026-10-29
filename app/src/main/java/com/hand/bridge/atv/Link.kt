@@ -44,6 +44,21 @@ internal object Tls {
     }
 }
 
+/** Looks at a TV's pairing port just far enough to read its certificate (name, MAC); doesn't start pairing. */
+object TvProbe {
+    class Result(val info: TvInfo.Info, val sha256: String)
+
+    fun identify(identity: Identity, host: String, port: Int = 6467, timeoutMs: Int = 4_000): Result? {
+        val trust = PinTrust(null)
+        return try {
+            Tls.connect(identity.sslContext(trust), host, port, timeoutMs, timeoutMs).use { }
+            trust.seen?.let { Result(TvInfo.parse(it), PinTrust.fingerprint(it)) }
+        } catch (e: IOException) {
+            null
+        }
+    }
+}
+
 /**
  * Pairing, step by step (blocking; call from a background thread):
  *   start()  -> TV shows a 6-character code

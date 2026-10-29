@@ -95,6 +95,18 @@ fun main(args: Array<String>) {
     remote.close()
     check("TV sees the connection close", waitFor { logHas("remote_closed") })
 
+    // Finding the TV without mDNS: scan the subnet for the pairing port, then read the certificate.
+    check("subnet /24 has 253 other hosts", Scan.hosts("192.168.1.77", 24).size == 253 && "192.168.1.77" !in Scan.hosts("192.168.1.77", 24))
+    check("subnet is capped at /22 (1021 hosts)", Scan.hosts("10.1.2.3", 8).size == 1021)
+    check("subnet range is correct", Scan.hosts("192.168.5.9", 24).let { it.first() == "192.168.5.1" && it.last() == "192.168.5.254" })
+    val hits = java.util.concurrent.CopyOnWriteArrayList<String>()
+    Scan.openPort(listOf("127.0.0.1", "127.0.0.2", "127.0.0.3"), pairPort, 500) { hits.add(it) }
+    check("port scan finds only the host with the port open", hits.toList() == listOf("127.0.0.1"), hits.toString())
+    val probe = TvProbe.identify(id, "127.0.0.1", pairPort)
+    check("probe reads the TV's name, MAC and fingerprint", probe != null && probe.info.name == "Mock Projector" &&
+        probe.info.mac == "AA:BB:CC:DD:EE:FF" && probe.sha256 == pin, probe?.info?.name ?: "null")
+    check("probe of a closed port returns null", TvProbe.identify(id, "127.0.0.1", 1, 1000) == null)
+
     // Wake-on-LAN packet: 6 x FF, then the MAC 16 times.
     val magic = WakeOnLan.packet("aa:bb:cc:dd:ee:ff")
     check("magic packet is 102 bytes with the MAC repeated 16 times", magic.size == 102 &&

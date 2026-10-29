@@ -44,6 +44,17 @@ reconnects by itself when it joins that Wi-Fi, and finds the TV again if its IP 
 - While a Wi-Fi TV is connected it takes priority over Bluetooth devices.
 - Map any gesture to *Power on / off* in the Gestures tab.
 
+## If something doesn't work
+- **Projector not listed on Wi-Fi:** the finder uses three methods at once (mDNS, Google Cast announcements, and a direct
+  scan for the TV's pairing port), so it should list any Google TV/Android TV on the same Wi-Fi. If not, use *Enter its IP
+  address* (Google Home shows it in the device settings).
+- **Bluetooth shows "connected" on the projector but not on the phone:** this is normal for Android's own Bluetooth
+  screen, which never lists a connection where the phone is the keyboard/mouse. Hand Bridge shows the real state on the
+  *Devices* tab. If the projector paired before Hand Bridge was running it never learned the phone can act as a keyboard
+  and mouse: remove the phone from the projector and from the phone's Bluetooth list, then use *Add a device →
+  Bluetooth: pair from the projector's side*.
+- **Home → Copy report** copies a plain-text report (Bluetooth and Wi-Fi state, saved devices, recent events).
+
 ## Testing the protocol code
 `tools/atvtest/run.sh <scratch dir>` compiles the protocol layer (`app/.../atv`, plain Kotlin) and runs it against a
 fake TV (`mock_tv.py`) that reads the real protobuf definitions: certificate, pairing, handshake, pings, key presses,
