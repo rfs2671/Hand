@@ -70,20 +70,36 @@ object Prefs {
     }
 
     /** input name (e.g. KEY_DPAD_UP, EVT_PINCH) -> Action name */
+    // Every gesture looks this up several times; parsing the JSON each time was wasted work on the main thread.
+    @Volatile private var mapCache: Map<String, String>? = null
+
     fun mapping(c: Context): Map<String, String> {
-        val s = sp(c).getString("map", null) ?: return Actions.defaults
-        val o = JSONObject(s)
-        // Saved choices win; defaults added in later versions still show up. "NONE" disables an input.
-        return Actions.defaults + o.keys().asSequence().associateWith { o.getString(it) }
+        mapCache?.let { return it }
+        val s = sp(c).getString("map", null)
+        val result = if (s == null) Actions.defaults else {
+            val o = JSONObject(s)
+            // Saved choices win; defaults added in later versions still show up. "NONE" disables an input.
+            Actions.defaults + o.keys().asSequence().associateWith { o.getString(it) }
+        }
+        mapCache = result
+        return result
     }
 
     fun setMapping(c: Context, m: Map<String, String>) {
         val o = JSONObject()
         m.forEach { (k, v) -> o.put(k, v) }
+        mapCache = null
         sp(c).edit().putString("map", o.toString()).apply()
     }
 
-    fun resetMapping(c: Context) = sp(c).edit().remove("map").apply()
+    fun resetMapping(c: Context) {
+        mapCache = null
+        sp(c).edit().remove("map").apply()
+    }
+
+    /** Keep Wi-Fi awake while a TV is connected (lower, steadier delay; uses more battery). */
+    fun lowLatency(c: Context) = sp(c).getBoolean("lowlatency", true)
+    fun setLowLatency(c: Context, v: Boolean) = sp(c).edit().putBoolean("lowlatency", v).apply()
 
     // ---- Wi-Fi TVs ---------------------------------------------------------------------------
 

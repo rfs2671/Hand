@@ -34,6 +34,8 @@ internal object Tls {
         // network problem, so report it as an SSL failure.
         try {
             val ssl = ctx.socketFactory.createSocket(raw, host, port, true) as SSLSocket
+            ssl.tcpNoDelay = true // small key messages must not wait to be combined with later data
+            ssl.keepAlive = true
             ssl.soTimeout = readMs
             ssl.startHandshake()
             return ssl
@@ -132,7 +134,9 @@ class AtvRemote(
     private val host: String,
     private val pinSha256: String?,
     private val listener: Listener,
-    private val port: Int = 6466
+    private val port: Int = 6466,
+    /** No message from the TV for this long (it pings every 5 s) means the link is probably dead. */
+    private val staleMs: Long = STALE_MS
 ) : Closeable {
 
     interface Listener {
@@ -146,6 +150,12 @@ class AtvRemote(
     @Volatile var powered = false
         private set
     @Volatile var closed = false
+        private set
+    @Volatile private var lastRx = System.currentTimeMillis()
+    @Volatile private var notified = false
+    @Volatile private var everReady = false
+    /** How long the latest key waited between being queued and being written, in ms. */
+    @Volatile var lastSendDelayMs = -1.0
         private set
 
     private var sock: SSLSocket? = null
@@ -177,6 +187,7 @@ class AtvRemote(
             val input = s.inputStream
             while (!closed) {
                 val raw = Framing.read(input) ?: break
+                lastRx = System.currentTimeMillis()
                 handle(Remote.parse(raw))
             }
         } catch (e: SocketTimeoutException) {
@@ -189,13 +200,12 @@ class AtvRemote(
             reason = "unexpected ${e.javaClass.simpleName}: ${e.message}"
             failure = IOException(reason, e)
         } finally {
-            val was = ready
             ready = false
             started.countDown()
             if (!closed) {
                 closed = true
                 runCatching { s.close() }
-                if (was) listener.onClosed(reason)
+                if (everReady) notifyClosed(reason)
             }
         }
     }
@@ -213,6 +223,7 @@ class AtvRemote(
                 powered = (m.message(Remote.START)?.int(1) ?: 0) != 0
                 val firstTime = !ready
                 ready = true
+                everReady = true
                 if (firstTime) started.countDown()
                 listener.onPower(powered)
             }
@@ -239,13 +250,45 @@ class AtvRemote(
     private val sender = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "atv-send").apply { isDaemon = true } }
     private val pending = java.util.concurrent.atomic.AtomicInteger()
 
-    private fun enqueue(payload: ByteArray): Boolean {
+    /**
+     * A write into a dead connection succeeds locally and the key is simply lost, so before queueing
+     * check that the TV has been heard from recently. If not, drop the link so the caller can reconnect.
+     */
+    private fun alive(): Boolean {
         if (!ready) return false
+        val silent = System.currentTimeMillis() - lastRx
+        if (silent > staleMs) {
+            ready = false
+            closed = true
+            closeAsync(sock)
+            notifyClosed("no word from the TV for ${silent / 1000} s")
+            return false
+        }
+        return true
+    }
+
+    /** Tells the owner once that the link is gone (not when the owner itself closed it). */
+    private fun notifyClosed(reason: String) {
+        if (notified) return
+        notified = true
+        listener.onClosed(reason)
+    }
+
+    private fun enqueue(payload: ByteArray, count: Int = 1, intervalMs: Long = 0, repeatDirection: Int? = null): Boolean {
+        if (!alive()) return false
         if (pending.get() > MAX_PENDING) return false // the TV isn't keeping up; drop rather than lag behind
         pending.incrementAndGet()
+        val queuedAt = System.nanoTime()
         return try {
             sender.execute {
-                try { write(payload) }
+                try {
+                    repeat(count) { n ->
+                        if (n > 0 && intervalMs > 0) Thread.sleep(intervalMs)
+                        write(payload)
+                        if (n == 0) lastSendDelayMs = (System.nanoTime() - queuedAt) / 1e6
+                    }
+                }
+                catch (e: InterruptedException) { /* closing */ }
                 catch (e: IOException) { close() }
                 catch (e: RuntimeException) { close() }
                 finally { pending.decrementAndGet() }
@@ -260,6 +303,13 @@ class AtvRemote(
     /** Queues a key press (in order) and returns at once. False if not connected. Safe to call from any thread. */
     fun key(code: Int, direction: Int = Remote.DIR_SHORT): Boolean = enqueue(Remote.key(code, direction))
 
+    /**
+     * [count] presses of one key, [intervalMs] apart. A fast slide used to fire all its presses in the same
+     * instant, which a TV interface can't animate; spaced out, each step is seen and scrolling looks smooth.
+     */
+    fun keys(code: Int, count: Int, intervalMs: Long, direction: Int = Remote.DIR_SHORT): Boolean =
+        enqueue(Remote.key(code, direction), count, intervalMs)
+
     fun launch(link: String): Boolean = enqueue(Remote.launchApp(link))
 
     override fun close() {
@@ -272,6 +322,8 @@ class AtvRemote(
     companion object {
         /** The TV pings every 5 s; no message for this long means the link is dead. */
         const val READ_TIMEOUT_MS = 20_000
+        /** The TV pings every 5 s: one missed ping is normal jitter, more means a dead link. */
+        const val STALE_MS = 8_000L
         private const val MAX_PENDING = 200
     }
 }

@@ -144,7 +144,7 @@ def remote_conn(s):
         r = RemoteMessage(); r.ParseFromString(f)
         if r.HasField('remote_ping_response'): log(ev='ping_response', val1=r.remote_ping_response.val1)
         elif r.HasField('remote_key_inject'):
-            k = r.remote_key_inject; log(ev='key', code=k.key_code, direction=k.direction)
+            k = r.remote_key_inject; log(ev='key', code=k.key_code, direction=k.direction, t=time.time())
         elif r.HasField('remote_app_link_launch_request'): log(ev='app', link=r.remote_app_link_launch_request.app_link)
         else: log(ev='other', text=str(r))
 

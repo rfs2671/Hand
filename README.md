@@ -82,6 +82,12 @@ narrows the risk rather than removing it. Don't install apps you don't trust alo
 device. Tap a row to try the action without the band. Turn off "Send actions to the connected device" to test recognition
 only; nothing is sent while it's off.
 
+**Speed:** the Test tab has a *Speed* card. *Low-latency Wi-Fi* keeps the phone's Wi-Fi from power-saving while a TV is
+connected (steadier delay, more battery). *Measure speed* times the network round trip to the TV. Slides send their key
+presses spaced about 35 ms apart so the TV shows each step; if the link drops, gestures are held for a few seconds and
+sent when it's back, and a link that has gone silent is detected within about 8 seconds instead of silently losing keys.
+Part of the remaining delay is Air Gestures itself: it batches dial and slide steps every 250 ms.
+
 ## Optional: Tasker / MacroDroid
 Enable *Allow Tasker / MacroDroid intents* and send a broadcast with action `com.hand.bridge.GESTURE`, **package
 `com.hand.bridge`**, and extra `gesture=pinch` (mapped as `EVT_PINCH`, plus `steps` for dials) or `action=SELECT`.

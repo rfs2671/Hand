@@ -2,6 +2,9 @@ package com.hand.bridge
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.wifi.WifiManager
+import android.os.Build
+import com.hand.bridge.atv.PendingKeys
 import android.os.Handler
 import android.os.Looper
 import com.hand.bridge.atv.AtvRemote
@@ -41,7 +44,47 @@ object TvManager {
 
     val listeners = CopyOnWriteArrayList<() -> Unit>()
     private fun changed() = main.post { listeners.forEach { it() } }
-    private fun set(s: TvState) { state = s; changed() }
+    private fun set(s: TvState) { state = s; updateWifiLock(); changed() }
+
+    @Volatile private var appCtx: Context? = null
+    @Volatile private var lastUp = 0L
+    private val pending = PendingKeys()
+    private var wifiLock: WifiManager.WifiLock? = null
+
+    /** Latest in-app delay (key queued -> written to the socket), for the speed check. */
+    val lastSendDelayMs: Double get() = remote?.lastSendDelayMs ?: -1.0
+
+    /**
+     * True when gestures belong to the TV: it is connected, or it was a moment ago and we are
+     * reconnecting. During that gap keys are held briefly instead of falling through to phone actions.
+     */
+    fun isTarget(): Boolean {
+        if (connected) return true
+        if (tv == null || !wanted) return false
+        if (state == TvState.NEEDS_PAIRING || state == TvState.UNREACHABLE) return false
+        return System.currentTimeMillis() - lastUp < 120_000
+    }
+
+    /** Wi-Fi power saving adds 100-300 ms of jitter; hold the radio awake while a TV is connected. */
+    fun refreshLocks(ctx: Context) { appCtx = ctx.applicationContext; updateWifiLock() }
+
+    private fun updateWifiLock() {
+        val ctx = appCtx ?: return
+        val want = connected && Prefs.lowLatency(ctx)
+        try {
+            if (want && wifiLock == null) {
+                val mode = if (Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY else WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                wifiLock = ctx.svc<WifiManager>().createWifiLock(mode, "HandBridge").apply { setReferenceCounted(false); acquire() }
+                Trace.add("wifi: low-latency lock on")
+            } else if (!want && wifiLock != null) {
+                wifiLock?.release()
+                wifiLock = null
+                Trace.add("wifi: low-latency lock off")
+            }
+        } catch (e: Exception) {
+            Trace.add("wifi: lock failed ${e.javaClass.simpleName} ${e.message}")
+        }
+    }
 
     val connected get() = remote?.ready == true
     fun connectedTv(): Tv? = if (connected) tv else null
@@ -49,6 +92,7 @@ object TvManager {
     /** Connects (with retries) in the background. [afterWake] waits longer: a TV takes a while to boot. */
     fun connect(ctx: Context, target: Tv, userInitiated: Boolean = true, afterWake: Boolean = false) {
         val app = ctx.applicationContext
+        appCtx = app
         if (userInitiated) {
             wanted = true
             // Gestures only reach the TV while the bridge service runs (it owns the Air Gestures receiver).
@@ -100,7 +144,12 @@ object TvManager {
                 Prefs.setLastTv(ctx, now.id)
                 powered = true
                 Trace.add("tv: connected to ${now.name}")
+                lastUp = System.currentTimeMillis()
                 set(TvState.CONNECTED)
+                // Gestures made while the link was being re-established.
+                val held = pending.drain()
+                if (held.isNotEmpty()) Trace.add("tv: sending ${held.size} held key(s)")
+                held.forEach { (code, dir) -> r.key(code, dir) }
                 return
             } catch (e: NeedsPairing) {
                 Trace.add("tv: needs pairing")
@@ -122,11 +171,12 @@ object TvManager {
         override fun onPower(on: Boolean) { powered = on; changed() }
         override fun onClosed(reason: String) {
             remote = null
+            lastUp = System.currentTimeMillis()
             Trace.add("tv: connection closed ($reason)")
             error = reason
             set(TvState.IDLE)
-            // Standby drops the link too; try again shortly while the bridge is running.
-            if (wanted && t.auto && Prefs.enabled(ctx)) main.postDelayed({ connect(ctx, t, userInitiated = false) }, 2_000)
+            // Reconnect straight away while the bridge is running (a standby TV makes this fail and back off).
+            if (wanted && t.auto && Prefs.enabled(ctx)) main.postDelayed({ connect(ctx, t, userInitiated = false) }, 300)
         }
     }
 
@@ -141,8 +191,30 @@ object TvManager {
         connect(ctx, pick, userInitiated = false)
     }
 
-    /** Returns false if not connected or the write failed. */
-    fun key(code: Int, direction: Int = Remote.DIR_SHORT): Boolean = remote?.key(code, direction) ?: false
+    /**
+     * Queues a key press. If the link just dropped, the key is held for a few seconds, a reconnect starts
+     * at once, and the key is sent when the TV is back (otherwise the gesture would simply be lost).
+     */
+    fun key(code: Int, direction: Int = Remote.DIR_SHORT): Boolean {
+        if (remote?.key(code, direction) == true) return true
+        return hold(code, direction)
+    }
+
+    /** [count] presses spaced [intervalMs] apart so each step shows on the TV (a slide). */
+    fun keys(code: Int, count: Int, intervalMs: Long): Boolean {
+        if (remote?.keys(code, count, intervalMs) == true) return true
+        repeat(minOf(count, 2)) { hold(code, Remote.DIR_SHORT) } // a couple catch the TV up; more would overshoot
+        return isTarget()
+    }
+
+    private fun hold(code: Int, direction: Int): Boolean {
+        if (!isTarget()) return false
+        pending.add(code, direction)
+        val ctx = appCtx
+        val t = tv
+        if (ctx != null && t != null) connect(ctx, t, userInitiated = false)
+        return true
+    }
 
     /**
      * Power button. Connected: the TV's power key toggles it. Not connected (standby): try to wake it

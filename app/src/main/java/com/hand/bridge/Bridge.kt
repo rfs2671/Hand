@@ -33,7 +33,7 @@ object Bridge {
         val action = Actions.resolve(Prefs.mapping(ctx), input)
         if (action == Action.NONE) return false
         if (action == Action.POWER) return TvManager.connected || Prefs.tvs(ctx).isNotEmpty()
-        if (TvManager.connected) return true // a Wi-Fi TV understands every action
+        if (TvManager.isTarget()) return true // a Wi-Fi TV understands every action
         return if (activeMode(ctx) == Mode.LOCAL) action in LOCAL_ACTIONS else true
     }
 
@@ -53,7 +53,7 @@ object Bridge {
     fun perform(ctx: Context, action: Action, repeat: Int = 0, discrete: Boolean = false): Boolean {
         if (repeat > 0 && !action.repeats) return true
         if (action == Action.POWER) return TvManager.power(ctx)
-        if (TvManager.connected) {
+        if (TvManager.isTarget()) {
             if (repeat > 0 && repeat % 3 != 0) return true // a held key repeats ~30x/s; the TV needs fewer
             return viaTv(action)
         }
@@ -64,8 +64,25 @@ object Bridge {
 
     private const val DISCRETE_REPEAT = 17 // ~40 px per event
 
-    private fun viaTv(a: Action): Boolean {
-        val code = when (a) {
+    /** A slide of [n] steps. On a TV the presses are spaced out so each step shows; elsewhere they repeat. */
+    fun handleSteps(ctx: Context, input: String, n: Int): Boolean {
+        if (n <= 1 || learn != null) return handle(ctx, input, discrete = true)
+        lastInput = input
+        if (!claims(ctx, input)) return false
+        val action = Actions.resolve(Prefs.mapping(ctx), input)
+        if (TvManager.isTarget()) {
+            val code = tvKey(action)
+            if (code != null) return TvManager.keys(code, n, if (action == Action.VOL_UP || action == Action.VOL_DOWN) 25L else 35L)
+        }
+        var any = false
+        repeat(n) { if (perform(ctx, action, 0, discrete = true)) any = true }
+        return any
+    }
+
+    private fun viaTv(a: Action): Boolean = tvKey(a)?.let { TvManager.key(it) } ?: false
+
+    private fun tvKey(a: Action): Int? {
+        return when (a) {
             Action.UP -> Keys.UP
             Action.DOWN -> Keys.DOWN
             Action.LEFT -> Keys.LEFT
@@ -82,9 +99,8 @@ object Bridge {
             Action.MUTE -> Keys.VOLUME_MUTE
             Action.SCROLL_UP -> Keys.PAGE_UP
             Action.SCROLL_DOWN -> Keys.PAGE_DOWN
-            Action.POWER, Action.NONE -> return false
+            Action.POWER, Action.NONE -> null
         }
-        return TvManager.key(code)
     }
 
     private val LOCAL_ACTIONS = setOf(

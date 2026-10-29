@@ -107,6 +107,7 @@ fun main(args: Array<String>) {
     check("all 200 keys reach the TV", waitFor(5000) { log.readText().split("\"code\": 20, \"direction\": 3").size - 1 == 200 })
     remote.close()
     check("TV sees the connection close", waitFor { logHas("remote_closed") })
+    check("closing it yourself isn't reported as a lost link", closedReason[0] == null, closedReason[0] ?: "ok")
 
     // Finding the TV without mDNS: scan the subnet for the pairing port, then read the certificate.
     check("subnet /24 has 253 other hosts", Scan.hosts("192.168.1.77", 24).size == 253 && "192.168.1.77" !in Scan.hosts("192.168.1.77", 24))
@@ -149,6 +150,41 @@ fun main(args: Array<String>) {
     check("unknown gesture has no action", act("EVT_SOMETHING_NEW") == Action.NONE)
     check("fast slides send few keys, volume more", Actions.stepCap(Action.RIGHT) == 6 && Actions.stepCap(Action.SCROLL_DOWN) == 6 && Actions.stepCap(Action.VOL_UP) == 20)
     check("readable names for steps", Actions.pretty("EVT_INDEX_LEFT_RIGHT_UP") == "Index left right (+)" && Actions.pretty("EVT_DIAL_DOWN") == "Dial (−)" && Actions.pretty("EVT_SWIPE_UP") == "Swipe up")
+
+    // Smoothness and reliability.
+    val speedRemote = AtvRemote(id, "127.0.0.1", pin, listener, remotePort)
+    speedRemote.connect(5000)
+    log.writeText(log.readText().lines().filter { !it.contains("\"code\": 22,") }.joinToString("\n")) // forget earlier RIGHT keys
+    check("spaced key burst accepted", speedRemote.keys(Keys.RIGHT, 5, 40))
+    check("all 5 paced keys arrive", waitFor(3000) { log.readLines().count { it.contains("\"code\": 22,") } == 5 })
+    val stamps = log.readLines().filter { it.contains("\"code\": 22,") }.map { Regex("\"t\": ([0-9.]+)").find(it)!!.groupValues[1].toDouble() }
+    val gaps = stamps.zipWithNext { a, b -> (b - a) * 1000 }
+    check("paced keys are ~40 ms apart (not a single instant)", gaps.all { it in 30.0..400.0 }, gaps.joinToString { "%.0f".format(it) })
+    check("a single key is written within a few ms", speedRemote.key(Keys.INFO) && waitFor { speedRemote.lastSendDelayMs >= 0 && speedRemote.lastSendDelayMs < 50 }, "%.2f ms".format(speedRemote.lastSendDelayMs))
+    speedRemote.close()
+
+    // A silent (dead) link must be noticed instead of swallowing keys.
+    val deadClosed = arrayOfNulls<String>(1)
+    val quiet = AtvRemote(id, "127.0.0.1", pin, object : AtvRemote.Listener { override fun onClosed(reason: String) { deadClosed[0] = reason } }, remotePort, staleMs = 700)
+    quiet.connect(5000)
+    check("fresh link accepts keys", quiet.key(Keys.MENU))
+    Thread.sleep(1100) // the fake TV sends only one ping at start, so nothing arrives after this
+    check("a link silent for longer than the limit refuses keys", !quiet.key(Keys.MENU) && !quiet.ready)
+    check("and the owner is told it closed", waitFor { deadClosed[0] != null }, deadClosed[0] ?: "no")
+    quiet.close()
+
+    // Keys queued during a reconnect.
+    val pend = PendingKeys(max = 3, ttlMs = 1000)
+    pend.add(Keys.UP, now = 1000); pend.add(Keys.DOWN, now = 1100); pend.add(Keys.LEFT, now = 1200); pend.add(Keys.RIGHT, now = 1300)
+    check("pending queue keeps the newest few", pend.drain(now = 1400).map { it.first } == listOf(Keys.DOWN, Keys.LEFT, Keys.RIGHT))
+    check("drain empties the queue", pend.drain(now = 1400).isEmpty())
+    pend.add(Keys.UP, now = 1000); pend.add(Keys.DOWN, now = 1900)
+    check("stale pending keys are dropped", pend.drain(now = 2500).map { it.first } == listOf(Keys.DOWN))
+
+    // Network round-trip measurement.
+    val rtt = Latency.tcpRtt("127.0.0.1", remotePort, 8, 1000, 5)
+    check("round-trip probe on loopback", rtt.ok == 8 && rtt.avgMs < 50 && rtt.minMs <= rtt.avgMs && rtt.avgMs <= rtt.maxMs, "avg %.2f ms max %.2f ms".format(rtt.avgMs, rtt.maxMs))
+    check("round-trip probe to a closed port reports losses", Latency.tcpRtt("127.0.0.1", 1, 3, 300, 0).ok == 0)
 
     // Gesture tester bookkeeping.
     GestureTests.clear()

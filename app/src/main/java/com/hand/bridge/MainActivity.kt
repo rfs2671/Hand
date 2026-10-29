@@ -34,6 +34,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.hand.bridge.atv.AtvPairing
+import com.hand.bridge.atv.Latency
 import com.hand.bridge.atv.PinTrust
 import com.hand.bridge.atv.Polo
 import com.hand.bridge.atv.TvInfo
@@ -929,6 +930,39 @@ class MainActivity : Activity() {
             })
             addView(pill("Reset results", BtnStyle.TEXT) { GestureTests.clear(); rebuild() })
         })
+        // Speed: keep Wi-Fi awake and measure the link to the TV.
+        val speedText = label("", 14f, p.muted)
+        page.addView(card {
+            addView(label("Speed", 17f, bold = true))
+            addView(toggleRow("Low-latency Wi-Fi", "Stops Wi-Fi from sleeping while a TV is connected, so gestures arrive faster and steadier. Uses more battery.", Prefs.lowLatency(context)) {
+                Prefs.setLowLatency(this@MainActivity, it)
+                TvManager.refreshLocks(this@MainActivity)
+            })
+            addView(speedText, lp().margins(t = 4, b = 8))
+            addView(pill("Measure speed", BtnStyle.SECONDARY) {
+                val host = TvManager.tv?.host ?: Prefs.tvs(this@MainActivity).firstOrNull()?.host
+                if (host == null) { speedText.text = "Add a Wi-Fi TV first."; return@pill }
+                speedText.text = "Measuring…"
+                worker.execute {
+                    val st = Latency.tcpRtt(host, 6466, 15)
+                    val inApp = TvManager.lastSendDelayMs
+                    val msg = when {
+                        st.ok == 0 -> "Couldn't reach the TV at $host. Is it on and on this Wi-Fi?"
+                        else -> {
+                            val verdict = when {
+                                st.ok < st.sent || st.maxMs > 150 -> "Unstable: move closer to the router, use the 5 GHz network, and keep Low-latency Wi-Fi on."
+                                st.avgMs < 25 && st.maxMs < 80 -> "Fast and steady."
+                                else -> "Fine, with some jitter."
+                            }
+                            "Wi-Fi to the TV: average ${"%.0f".format(st.avgMs)} ms, worst ${"%.0f".format(st.maxMs)} ms, ${st.ok} of ${st.sent} answered.\n" +
+                                (if (inApp >= 0) "Last key waited ${"%.1f".format(inApp)} ms inside the app.\n" else "") + verdict
+                        }
+                    }
+                    runOnUiThread { speedText.text = msg }
+                }
+            })
+        })
+
         val rows = vbox {}
         page.addView(rows)
 
