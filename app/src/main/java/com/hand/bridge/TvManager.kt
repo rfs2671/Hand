@@ -57,6 +57,8 @@ object TvManager {
     // interval, but should be short enough to stop scrolling promptly.
     private var heldKey: Int? = null
     private var endHold: Runnable? = null
+    private var lastSliderCode: Int? = null
+    private var lastSliderAt = 0L
     private const val HOLD_IDLE_MS = 340L
 
     @Synchronized private fun releaseHold() {
@@ -71,15 +73,26 @@ object TvManager {
      * Unlike a sequence of SHORT keys, this lets the TV apply its own key-repeat behavior.
      * It does NOT create touchpad coordinates or multi-touch on Android TV.
      */
-    @Synchronized fun continuousKey(code: Int): Boolean {
+    @Synchronized fun continuousKey(code: Int, steps: Int = 1): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
         if (heldKey != code) {
             releaseHold()
-            val active = remote
-            if (active?.key(code, Remote.DIR_START_LONG) != true) {
+            // A quick flick should move immediately by its actual number of steps.
+            // If another batch arrives shortly after, treat it as a hold instead.
+            val continuing = lastSliderCode == code && now - lastSliderAt in 1..440
+            lastSliderCode = code
+            lastSliderAt = now
+            if (!continuing) {
+                val r = remote
+                return if (r?.keys(code, steps.coerceIn(1, 6), 12L) == true) true
+                       else hold(code, Remote.DIR_SHORT)
+            }
+            if (remote?.key(code, Remote.DIR_START_LONG) != true) {
                 return hold(code, Remote.DIR_SHORT)
             }
             heldKey = code
         }
+        lastSliderAt = now
         endHold?.let { main.removeCallbacks(it) }
         val toEnd = Runnable { releaseHold() }
         endHold = toEnd
