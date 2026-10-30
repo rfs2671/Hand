@@ -55,7 +55,12 @@ object Bridge {
         if (action == Action.POWER) return TvManager.power(ctx)
         if (TvManager.isTarget()) {
             if (repeat > 0 && repeat % 3 != 0) return true // a held key repeats ~30x/s; the TV needs fewer
-            return viaTv(action)
+            val adjusted = if (Prefs.tvCursor(ctx)) when (action) {
+                Action.SCROLL_UP -> Action.UP
+                Action.SCROLL_DOWN -> Action.DOWN
+                else -> action
+            } else action
+            return viaTv(adjusted)
         }
         val mode = activeMode(ctx)
         return if (mode == Mode.LOCAL) local(ctx, action)
@@ -71,7 +76,12 @@ object Bridge {
         if (!claims(ctx, input)) return false
         val action = Actions.resolve(Prefs.mapping(ctx), input)
         if (TvManager.isTarget()) {
-            val code = tvKey(action)
+            val adjusted = if (Prefs.tvCursor(ctx)) when (action) {
+                Action.SCROLL_UP -> Action.UP
+                Action.SCROLL_DOWN -> Action.DOWN
+                else -> action
+            } else action
+            val code = tvKey(adjusted)
             if (code != null) return TvManager.keys(code, n, if (action == Action.VOL_UP || action == Action.VOL_DOWN) 25L else 35L)
         }
         var any = false
