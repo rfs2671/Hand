@@ -962,6 +962,23 @@ class MainActivity : Activity() {
 
     // ---- test -----------------------------------------------------------------------------
 
+    /** Exact motions to use during direct-band diagnostic mode. */
+    private fun nativeGestureInstruction(key: String): String = when (key) {
+        "EVT_SWIPE_UP" -> "Slide thumb up on index finger"
+        "EVT_SWIPE_DOWN" -> "Slide thumb down on index finger"
+        "EVT_SWIPE_LEFT" -> "Slide thumb left on index finger"
+        "EVT_SWIPE_RIGHT" -> "Slide thumb right on index finger"
+        "EVT_INDEX_TAP" -> "Touch thumb to index once"
+        "EVT_INDEX_DOUBLE" -> "Touch thumb to index twice quickly"
+        "EVT_INDEX_HOLD" -> "Pinch index, hold at least 0.6s, then release"
+        "EVT_MIDDLE_TAP" -> "Touch thumb to middle finger once"
+        "EVT_MIDDLE_DOUBLE" -> "Touch thumb to middle finger twice quickly"
+        "EVT_MIDDLE_HOLD" -> "Pinch middle finger and hold"
+        "EVT_DIAL_UP" -> "Pinch index and rotate wrist clockwise"
+        "EVT_DIAL_DOWN" -> "Pinch index and rotate wrist counterclockwise"
+        else -> ""
+    }
+
     private fun testGroup(key: String) = when {
         "SWIPE" in key -> "Swipes"
         "DRAG" in key -> "Drags"
@@ -1086,6 +1103,7 @@ class MainActivity : Activity() {
                             GestureTests.Status.DEVICE_FAILED -> "Couldn't send" to p.bad
                         }
                         val sub = buildString {
+                            if (native) append(nativeGestureInstruction(key) + "\n")
                             append(if (action == Action.NONE) "No action assigned" else "→ ${action.label}")
                             if (r != null && r.bandCount > 0) append(" · received ${r.bandCount}× ${ago(r.bandAt)}")
                             when (r?.sent) {
