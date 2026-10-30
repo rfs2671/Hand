@@ -79,6 +79,26 @@ object Bridge {
         return any
     }
 
+    /**
+     * Continuous slider/dial steps. Short flicks are sent quickly; sustained movement
+     * becomes a real remote button hold instead of a queue of delayed short presses.
+     */
+    fun handleContinuous(ctx: Context, input: String, steps: Int): Boolean {
+        lastInput = input
+        learn?.let { learn = null; it(input); return true }
+        if (!claims(ctx, input)) return false
+        val action = Actions.resolve(Prefs.mapping(ctx), input)
+        if (TvManager.isTarget()) {
+            val code = when (action) {
+                Action.SCROLL_UP -> Keys.UP
+                Action.SCROLL_DOWN -> Keys.DOWN
+                else -> tvKey(action)
+            } ?: return false
+            return TvManager.continuousKey(code, steps)
+        }
+        return handleSteps(ctx, input, steps)
+    }
+
     private fun viaTv(a: Action): Boolean = tvKey(a)?.let { TvManager.key(it) } ?: false
 
     private fun tvKey(a: Action): Int? {
@@ -99,6 +119,8 @@ object Bridge {
             Action.MUTE -> Keys.VOLUME_MUTE
             Action.SCROLL_UP -> Keys.PAGE_UP
             Action.SCROLL_DOWN -> Keys.PAGE_DOWN
+            Action.ZOOM_IN -> Keys.ZOOM_IN
+            Action.ZOOM_OUT -> Keys.ZOOM_OUT
             Action.POWER, Action.NONE -> null
         }
     }
@@ -131,6 +153,8 @@ object Bridge {
                 if (mode == Mode.MOUSE) h.mouse(0, 0, 0, 3) else h.key(HidBridge.K_PAGE_UP)
             Action.SCROLL_DOWN ->
                 if (mode == Mode.MOUSE) h.mouse(0, 0, 0, -3) else h.key(HidBridge.K_PAGE_DOWN)
+            Action.ZOOM_IN -> h.key(HidBridge.K_EQUAL, HidBridge.MOD_CTRL)
+            Action.ZOOM_OUT -> h.key(HidBridge.K_MINUS, HidBridge.MOD_CTRL)
             Action.NONE, Action.POWER -> return false
         }
         return true
