@@ -33,9 +33,11 @@ object Prefs {
     fun airGestures(c: Context) = sp(c).getBoolean("airgestures", true)
     fun setAirGestures(c: Context, v: Boolean) = sp(c).edit().putBoolean("airgestures", v).apply()
 
-    /** Projector-side Remouse converts Wi-Fi DPAD keys into an accessibility cursor. */
-    fun tvCursor(c: Context) = sp(c).getBoolean("tv_cursor", false)
-    fun setTvCursor(c: Context, enabled: Boolean) = sp(c).edit().putBoolean("tv_cursor", enabled).apply()
+    /** Which on-wire D-pad repeat behavior works best in the JMGO browser (no TV app needed). */
+    fun dpadRepeat(c: Context) = sp(c).getBoolean("dpad_repeat", false)
+    fun setDpadRepeat(c: Context, enabled: Boolean) = sp(c).edit().putBoolean("dpad_repeat", enabled).apply()
+    fun dpadRepeatMs(c: Context) = sp(c).getInt("dpad_repeat_ms", 95).coerceIn(60, 250)
+    fun setDpadRepeatMs(c: Context, ms: Int) = sp(c).edit().putInt("dpad_repeat_ms", ms.coerceIn(60, 250)).apply()
 
     /** Ask Air Gestures to switch to a profile named after this app, and receive band status. */
     fun airProfile(c: Context) = sp(c).getBoolean("airprofile", false)
