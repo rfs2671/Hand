@@ -141,7 +141,13 @@ object AirGestures {
         Trace.add("air: $key${if (n > 1) " x$n" else ""} -> $action")
         var sent: Boolean? = null
         if (!testing || sendWhileTesting) {
-            sent = if (n > 1) Bridge.handleSteps(ctx, key, n) else Bridge.handle(ctx, key, discrete = true)
+            val continuous = steps != 0 &&
+                (action in Actions.directional || action == Action.SCROLL_UP || action == Action.SCROLL_DOWN)
+            sent = when {
+                continuous -> Bridge.handleContinuous(ctx, key, n)
+                n > 1 -> Bridge.handleSteps(ctx, key, n)
+                else -> Bridge.handle(ctx, key, discrete = true)
+            }
         }
         GestureTests.note(key, action, sent, fromBand = true)
     }
