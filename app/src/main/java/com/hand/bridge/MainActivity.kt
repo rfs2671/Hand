@@ -424,14 +424,52 @@ class MainActivity : Activity() {
     private fun devicesPage(): () -> Unit {
         val hid = Bridge.hid(this)
         page.addView(card {
-            addView(label("Car / Android Auto media", 17f, bold = true))
+            addView(label("Car / Android Auto · music and cellular calls", 17f, bold = true))
             addView(label("No Bluetooth mouse pairing with the BMW is needed. Media gestures go to the active music player on this Pixel; Android Auto may play that audio through the car.", 13.5f, p.muted), lp().margins(t = 5, b = 10))
             addView(toggleRow("Use Car media mode", "Prioritize the Pixel's music app even if a projector or Bluetooth HID host is connected.", Prefs.carMode(this@MainActivity)) {
                 Prefs.setCarMode(this@MainActivity, it)
                 rebuild()
             })
-            addView(label("Band preset: index tap = play/pause; thumb left/right = previous/next; index slider left/right = previous/next; dial = phone music volume.", 13f, p.muted), lp().margins(t = 8))
-            addView(label("Important: The BMW display's cursor, menus and physical speaker volume are not controlled by Android Auto media commands.", 12.5f, p.warn), lp().margins(t = 8))
+            addView(label("Band: index tap = play/pause; thumb left/right = tracks; middle tap = answer call; index hold = end/reject call; dial = phone music volume.", 13f, p.muted), lp().margins(t = 8))
+            addView(label("Calls are regular cellular calls only; an active ringing call is needed to test Answer. End rejects a ringing call or hangs up an active call.", 12.5f, p.muted), lp().margins(t = 8))
+            addView(if (PhoneCalls.permitted(this@MainActivity)) {
+                label("Phone call permission granted", 13f, p.good)
+            } else pill("Allow answering and ending calls", BtnStyle.PRIMARY) {
+                requestPermissions(arrayOf(Manifest.permission.ANSWER_PHONE_CALLS), REQ_CALLS)
+            }, lp().margins(t = 8))
+            addView(hbox {
+                addView(pill("Test answer call", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity)) toast("Enable Car media mode first")
+                    else if (!PhoneCalls.permitted(this@MainActivity)) toast("Grant Phone calls permission above first")
+                    else {
+                        PhoneCalls.answer(this@MainActivity)
+                        toast(PhoneCalls.lastStatus)
+                    }
+                }, lp(0, weight = 1f).margins(r = 8))
+                addView(pill("Test end call", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity)) toast("Enable Car media mode first")
+                    else if (!PhoneCalls.permitted(this@MainActivity)) toast("Grant Phone calls permission above first")
+                    else confirm("End cellular call?", "This will hang up an active call, or reject a ringing call. Only use it during a test call.", "End call") {
+                        PhoneCalls.end(this@MainActivity)
+                        toast(PhoneCalls.lastStatus)
+                    }
+                }, lp(0, weight = 1f))
+            }, lp().margins(t = 10))
+            val carVolumeResult = label(PhoneAudio.lastStatus + " · " + PhoneAudio.level(this@MainActivity), 12.5f, p.muted)
+            addView(carVolumeResult, lp().margins(t = 10))
+            addView(hbox {
+                addView(pill("Test phone volume −", BtnStyle.SECONDARY) {
+                    val changed = Bridge.perform(this@MainActivity, Action.VOL_DOWN)
+                    carVolumeResult.text = PhoneAudio.lastStatus
+                    toast(if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
+                }, lp(0, weight = 1f).margins(r = 8))
+                addView(pill("Test phone volume +", BtnStyle.SECONDARY) {
+                    val changed = Bridge.perform(this@MainActivity, Action.VOL_UP)
+                    carVolumeResult.text = PhoneAudio.lastStatus
+                    toast(if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
+                }, lp(0, weight = 1f))
+            }, lp().margins(t = 8))
+            addView(label("Important: Android Auto does not expose BMW amplifier volume to this app. Phone volume changes do not prove that the car became louder/quieter.", 12.5f, p.warn), lp().margins(t = 8))
             addView(hbox {
                 addView(pill("Test play/pause", BtnStyle.SECONDARY) {
                     if (!Prefs.carMode(this@MainActivity)) {
@@ -1064,7 +1102,7 @@ class MainActivity : Activity() {
     private fun remotePage(): () -> Unit {
         if (Prefs.carMode(this)) {
             page.addView(card {
-                addView(label("Car media controls", 18f, bold = true))
+                addView(label("Car media and cellular calls", 18f, bold = true))
                 addView(label("These buttons control your Pixel's active music app, not the BMW's display. Start playing media on the phone or in Android Auto first.", 14f, p.muted), lp().margins(t = 6, b = 12))
                 addView(hbox {
                     addView(pill("Previous", BtnStyle.SECONDARY) {
@@ -1077,10 +1115,29 @@ class MainActivity : Activity() {
                         Bridge.perform(this@MainActivity, Action.NEXT)
                     }, lp(0, weight = 1f))
                 })
-                addView(label("Phone music-stream volume (may not change the BMW's speaker level)", 12.5f, p.muted), lp().margins(t = 14, b = 6))
+                addView(label("Cellular calls (requires permission granted in Devices)", 12.5f, p.muted), lp().margins(t = 14, b = 6))
                 addView(hbox {
-                    addView(pill("Phone volume −", BtnStyle.SECONDARY) { Bridge.perform(this@MainActivity, Action.VOL_DOWN) }, lp(0, weight = 1f).margins(r = 8))
-                    addView(pill("Phone volume +", BtnStyle.SECONDARY) { Bridge.perform(this@MainActivity, Action.VOL_UP) }, lp(0, weight = 1f))
+                    addView(pill("Answer ringing call", BtnStyle.SECONDARY) {
+                        PhoneCalls.answer(this@MainActivity)
+                        toast(PhoneCalls.lastStatus)
+                    }, lp(0, weight = 1f).margins(r = 8))
+                    addView(pill("End / reject call", BtnStyle.DANGER) {
+                        confirm("End cellular call?", "This will hang up the active call or reject an incoming call.", "End call") {
+                            PhoneCalls.end(this@MainActivity)
+                            toast(PhoneCalls.lastStatus)
+                        }
+                    }, lp(0, weight = 1f))
+                })
+                addView(label("Phone music-stream volume (may not change BMW speakers)", 12.5f, p.muted), lp().margins(t = 14, b = 6))
+                addView(hbox {
+                    addView(pill("Phone volume −", BtnStyle.SECONDARY) {
+                        Bridge.perform(this@MainActivity, Action.VOL_DOWN)
+                        toast(PhoneAudio.lastStatus)
+                    }, lp(0, weight = 1f).margins(r = 8))
+                    addView(pill("Phone volume +", BtnStyle.SECONDARY) {
+                        Bridge.perform(this@MainActivity, Action.VOL_UP)
+                        toast(PhoneAudio.lastStatus)
+                    }, lp(0, weight = 1f))
                 })
                 addView(label("Mouse, D-pad, cursor, and car hardware volume are not available over standard Android Auto.", 12.5f, p.warn), lp().margins(t = 12))
             })
@@ -1315,6 +1372,12 @@ class MainActivity : Activity() {
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
+        super.onRequestPermissionsResult(code, perms, res)
+        if (code == REQ_CALLS) {
+            toast(if (PhoneCalls.permitted(this)) "Call permission granted. Middle tap answers; index hold ends." else "Call permission denied. Music control still works.")
+            rebuild()
+            return
+        }
         if (hasBt()) {
             BridgeService.start(this)
             syncAssociations()
@@ -1430,6 +1493,7 @@ class MainActivity : Activity() {
     companion object {
         const val REQ_PERMS = 1
         const val REQ_ASSOC = 2
+        const val REQ_CALLS = 8
         const val AIR_GESTURES_URL = "https://gitlab.com/896kb/air-gestures-android/-/releases"
     }
 }
