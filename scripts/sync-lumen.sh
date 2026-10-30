@@ -16,7 +16,7 @@ python3 - "$DEST/band/build.gradle.kts" <<'PY'
 import pathlib,sys,re
 p=pathlib.Path(sys.argv[1])
 s=p.read_text()
-s=s.replace('id("com.android.library")', 'id("com.android.library")\\n    id("org.jetbrains.kotlin.android")')
+s=s.replace('id("com.android.library")', 'id("com.android.library")' + chr(10) + '    id("org.jetbrains.kotlin.android")')
 s=re.sub(r'compileSdk \{\s*version = release\(37\) \{ minorApiLevel = 2 \}\s*\}', 'compileSdk = 35', s)
 p.write_text(s)
 PY
