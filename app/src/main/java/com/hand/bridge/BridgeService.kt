@@ -37,7 +37,7 @@ class BridgeService : Service() {
     // (com.hand.bridge.GESTURE stays on the manifest receiver only, so nothing is handled twice.)
     private val gestureEvents = object : BroadcastReceiver() {
         override fun onReceive(c: Context, intent: Intent) {
-            AirGestures.handleBroadcast(c, this, intent)
+            if (!NativeBand.enabled(c)) AirGestures.handleBroadcast(c, this, intent)
         }
     }
 
@@ -78,6 +78,7 @@ class BridgeService : Service() {
         if (intent?.action == ACTION_STOP) {
             Prefs.setEnabled(this, false)
             if (Prefs.airProfile(this)) AirGestures.announce(this, false)
+            NativeBand.stop()
             hid.stop()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -85,7 +86,8 @@ class BridgeService : Service() {
         }
         startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         Prefs.setEnabled(this, true)
-        if (Prefs.airProfile(this)) AirGestures.announce(this, true)
+        if (!NativeBand.enabled(this) && Prefs.airProfile(this)) AirGestures.announce(this, true)
+        if (NativeBand.enabled(this)) NativeBand.start(this)
         hid.start()
         val connect = intent?.getStringExtra(EXTRA_CONNECT)
         if (connect != null) hid.connectWithRetry(connect) else hid.reconnectAuto()
@@ -133,6 +135,7 @@ class BridgeService : Service() {
         AirGestures.serviceListening = false
         runCatching { unregisterReceiver(gestureEvents) }
         runCatching { unregisterReceiver(screenOn) }
+        NativeBand.stop()
         super.onDestroy()
     }
 
