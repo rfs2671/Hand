@@ -79,7 +79,7 @@ object TvManager {
             releaseHold()
             // A quick flick should move immediately by its actual number of steps.
             // If another batch arrives shortly after, treat it as a hold instead.
-            val continuing = lastSliderCode == code && now - lastSliderAt in 1..440
+            val continuing = lastSliderCode == code && now - lastSliderAt in 1L..440L
             lastSliderCode = code
             lastSliderAt = now
             if (!continuing) {
