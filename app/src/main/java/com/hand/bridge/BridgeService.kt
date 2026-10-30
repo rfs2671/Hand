@@ -13,6 +13,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.audiofx.AudioEffect
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -41,6 +42,14 @@ class BridgeService : Service() {
         }
     }
 
+    // The player itself announces its audio session; this is the supported, no-ADB
+    // way to learn session IDs without DUMP or invasive audio capture.
+    private val audioSessionEvents = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            YoutubeMusicGain.onSessionIntent(c, i)
+        }
+    }
+
     private val screenOn = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             hid.start() // re-register if the HID slot was lost and the backoff gave up
@@ -62,6 +71,12 @@ class BridgeService : Service() {
         )
         registerReceiver(btState, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         registerReceiver(gestureEvents, IntentFilter(AirGestures.ACTION_GESTURE), Context.RECEIVER_EXPORTED)
+        val audioEvents = IntentFilter().apply {
+            addAction(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION)
+            addAction(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION)
+        }
+        registerReceiver(audioSessionEvents, audioEvents, Context.RECEIVER_EXPORTED)
+        YoutubeMusicGain.refresh(this)
         AirGestures.serviceListening = true
         Trace.add("air: listening for Air Gestures")
         registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
@@ -76,6 +91,7 @@ class BridgeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            YoutubeMusicGain.resetAll()
             Prefs.setEnabled(this, false)
             if (Prefs.airProfile(this)) AirGestures.announce(this, false)
             hid.stop()
@@ -85,6 +101,7 @@ class BridgeService : Service() {
         }
         startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         Prefs.setEnabled(this, true)
+        YoutubeMusicGain.refresh(this)
         if (Prefs.airProfile(this)) AirGestures.announce(this, true)
         hid.start()
         val connect = intent?.getStringExtra(EXTRA_CONNECT)
@@ -97,6 +114,7 @@ class BridgeService : Service() {
         val host = hid.host
         val tv = TvManager.connectedTv()
         return when {
+            Prefs.carMode(this) && Prefs.youtubeGain(this) -> "Car media — YouTube Music DSP experimental"
             Prefs.carMode(this) -> "Car media mode — controlling phone music, not car display"
             tv != null -> "Connected to ${tv.name} over Wi-Fi"
             host != null -> "Connected to ${host.name ?: host.address}"
@@ -131,6 +149,8 @@ class BridgeService : Service() {
         TvManager.listeners.remove(onChange)
         runCatching { svc<ConnectivityManager>().unregisterNetworkCallback(wifi) }
         runCatching { unregisterReceiver(btState) }
+        YoutubeMusicGain.resetAll()
+        runCatching { unregisterReceiver(audioSessionEvents) }
         AirGestures.serviceListening = false
         runCatching { unregisterReceiver(gestureEvents) }
         runCatching { unregisterReceiver(screenOn) }
