@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import com.hand.bridge.atv.Keys
 import dev.lumen.band.BandLink
 import dev.lumen.band.GestureDevice
 import dev.lumen.band.Identity
@@ -185,9 +184,8 @@ object NativeBand {
     fun setPointer(on: Boolean, testOnly: Boolean = false): Boolean {
         val app = ctx ?: return false
         val hidAvailable = Bridge.hid(app).host != null && Bridge.activeMode(app) == Mode.MOUSE
-        val wifiCursor = Prefs.tvCursor(app) && TvManager.isTarget()
-        if (on && !testOnly && !hidAvailable && !wifiCursor) {
-            error = "Connect a Bluetooth HID mouse host or enable Wi-Fi cursor with Remouse on the TV"
+        if (on && !testOnly && !hidAvailable) {
+            error = "Continuous air mouse requires a Bluetooth HID host. Wi-Fi uses directional D-pad controls instead."
             changed()
             return false
         }
@@ -223,16 +221,7 @@ object NativeBand {
                         i += 4
                         continue
                     }
-                    val app = ctx
-                    if (app != null && Prefs.tvCursor(app) && TvManager.isTarget() &&
-                        (Bridge.hid(app).host == null || Bridge.activeMode(app) != Mode.MOUSE)) {
-                        // Remouse consumes OK as a click, but accepts no touch coordinates.
-                        if (buttons != 0 && nextButtons == 0) {
-                            TvManager.key(if (buttons and 1 != 0) Keys.CENTER else Keys.MENU)
-                        }
-                    } else {
-                        app?.let { Bridge.hid(it).mouse(nextButtons, 0, 0) }
-                    }
+                    ctx?.let { Bridge.hid(it).mouse(nextButtons, 0, 0) }
                     buttons = nextButtons
                 }
             }
@@ -251,21 +240,7 @@ object NativeBand {
         pacer.take(SystemClock.elapsedRealtimeNanos() / 1e9)?.let { delta ->
             val whole = counts.add(delta[0], delta[1])
             if (whole[0] != 0 || whole[1] != 0) {
-                ctx?.let { app ->
-                    if (Prefs.tvCursor(app) && TvManager.isTarget() &&
-                        (Bridge.hid(app).host == null || Bridge.activeMode(app) != Mode.MOUSE)) {
-                        // Stream held DPAD direction to projector-side Remouse, starting
-                        // with the first motion sample; no delayed slider detection.
-                        val horizontal = kotlin.math.abs(whole[0]) >= kotlin.math.abs(whole[1])
-                        val d = if (horizontal) whole[0] else whole[1]
-                        val code = if (horizontal) {
-                            if (d > 0) Keys.RIGHT else Keys.LEFT
-                        } else if (d > 0) Keys.DOWN else Keys.UP
-                        TvManager.cursorDirection(code, 180L)
-                    } else {
-                        Bridge.hid(app).mouse(buttons, whole[0], whole[1])
-                    }
-                }
+                ctx?.let { Bridge.hid(it).mouse(buttons, whole[0], whole[1]) }
             }
         }
         if (!pacer.isEmpty) {
