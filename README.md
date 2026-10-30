@@ -126,3 +126,48 @@ signed with it needs one uninstall of the debug-signed app; after that, updates 
 - Zoom uses Android TV keycodes `ZOOM_IN`/`ZOOM_OUT`, or Ctrl+plus/minus over HID. **These work only in apps that support the commands**. They do not automatically control JMGO's optical/digital projection-size settings, and cannot simulate arbitrary two-finger pinches over the Google TV Remote protocol.
 - The **Measure speed** test reports a TCP connection handshake, **not** time between hand movement and the projector's image. Air Gestures batches dial and slider steps for up to 250 ms; changing Hand Bridge alone cannot eliminate that.
 - For true mouse movement/touch gestures within the projector, the remote protocol does not expose a general touch/pointer surface. A compatible HID host or a separately installed TV-side accessibility component would be necessary, and even that is application-dependent.
+
+
+## Experimental native Meta Band + JMGO cursor (preview branch)
+
+This branch is **not** the stable HandBridge APK. It uses a **different Android application ID**
+(`com.hand.bridge.nativepreview`) to avoid overwriting the stable app.
+
+- Native input: MIT-licensed Rokid Lumen Android `band/` module and Rust `band-core` + JNI bridge
+  from pinned commit `4fe237668683cbe7e613e3c0121723a9f176102a`. **No Rokid hardware required**.
+- Build: `bash scripts/sync-lumen.sh`; install Rust 1.88+, cargo-ndk and Android NDK;
+  `bash third_party/lumen/build-rust.sh`; then `./gradlew :app:assembleRelease`.
+  CI builds this automatically. The branch leaves the stable APK release untouched.
+- Export the owner's key from Air Gestures (do not reset or re-claim the band); import
+  `air-gestures-band.json` via the Native Band card on Home. The export is sensitive; do not
+  post it in issues, logs, chat or Git. Turn the Air Gestures app's **band connection off**;
+  only one app can hold the band at a time. Enable Direct band input.
+- The preview changes upstream's **ordinary-action gate from 400ms to 100ms** and leaves double
+  taps unassigned in its native mapping to avoid the extra **400ms tap-disambiguation wait**.
+  Duplicate-report suppression and band firmware timing still exist. These changes are
+  experimental and have **not been benchmarked on a real band**.
+- **Bluetooth mouse:** Pair the JMGO as a Bluetooth HID host for the phone and choose Mouse
+  mode, then enable native Air Mouse. This sends actual relative mouse reports and pinch clicks.
+  Pairing/host support on N1 Ultra is not yet verified.
+- **Wi-Fi cursor:** Android TV Remote v2 cannot send arbitrary mouse coordinates. To turn
+  the existing Wi-Fi arrow commands into a cursor, sideload the MIT-licensed
+  [Remouse 3.0](https://github.com/zy0816/remouse/releases/download/v3.0/Remouse-v3.0.apk)
+  to the JMGO, open Settings > Accessibility > Remouse > On, then enable **Wi-Fi cursor
+  adapter (Remouse)** in HandBridge. The band Air Mouse can then drive the cursor by
+  converting movement into held D-pad directions. OK clicks the highlighted element.
+  This is **directional emulation**, not a true free-moving pixel-accurate Wi-Fi mouse.
+  Apps without accessible clickable nodes may not respond; long-press OK changes Remouse
+  scroll mode and long-press BACK pauses Remouse. Don't enable Remouse until you've read
+  its instructions, as it takes over arrow navigation.
+- Zoom keycodes are still only supported where the TV app recognizes them. This preview does
+  not emulate arbitrary two-finger pinch zoom in every TV app.
+
+**Validation still required:** native band pairing, short/long tap and consecutive swipes,
+reconnection after sleep, pointer movement and click accuracy, locked-phone stability, and
+JMGO cursor performance. The Rust library builds and the APK compiles; that is not evidence of
+those physical behaviors or of sub-100ms end-to-end response.
+
+Third-party notices: MIT (896kb Air Gestures band-core and beyondlevi Rokid Lumen band library)
+and MIT (callbacked Kinesis); source and copyright notices are in the pinned upstream
+`LICENSE-air-gestures`, `LICENSE-kinesis`, `LICENSE` files. Remouse is a separate
+third-party app; it is not included in HandBridge.
