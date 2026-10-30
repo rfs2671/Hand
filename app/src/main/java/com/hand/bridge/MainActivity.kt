@@ -797,6 +797,8 @@ class MainActivity : Activity() {
         Action.PREV -> Glyph.Shape.PREV
         Action.VOL_UP -> Glyph.Shape.VOL_UP
         Action.VOL_DOWN -> Glyph.Shape.VOL_DOWN
+        Action.ZOOM_IN -> Glyph.Shape.PLUS
+        Action.ZOOM_OUT -> Glyph.Shape.DOT
         Action.MUTE -> Glyph.Shape.MUTE
         Action.NONE -> Glyph.Shape.DOT
     }
