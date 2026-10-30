@@ -60,8 +60,20 @@ object TvManager {
     private var lastSliderCode: Int? = null
     private var lastSliderAt = 0L
     private const val HOLD_IDLE_MS = 340L
+    private var dpadRepeater: Runnable? = null
+    private var dpadRepeatGeneration = 0
+    private var repeatingCode: Int? = null
+
+    @Synchronized private fun stopDpadRepeat() {
+        dpadRepeatGeneration++
+        dpadRepeater?.let { main.removeCallbacks(it) }
+        dpadRepeater = null
+        repeatingCode = null
+    }
+
 
     @Synchronized private fun releaseHold() {
+        stopDpadRepeat()
         endHold?.let { main.removeCallbacks(it) }
         endHold = null
         heldKey?.let { remote?.key(it, Remote.DIR_END_LONG) }
@@ -102,34 +114,43 @@ object TvManager {
 
 
     /**
-     * Wi-Fi cursor mode for the projector-side Remouse accessibility service.
+     * Hardware-style D-pad calibration: press/release as separate Android TV
+     * v2 START_LONG/END_LONG events, or as repeated SHORT key presses.
      *
-     * Remouse needs a real DPAD ACTION_DOWN followed by ACTION_UP so it can
-     * continuously accelerate the cursor while held. Start on the FIRST motion
-     * sample (do not wait for a second batch or send repeated short key taps).
-     * New motion of the same direction refreshes the release deadline. Direction
-     * changes end the previous key before starting the next one.
-     *
-     * The Android TV v2 connection only knows DPAD keys; the projector itself
-     * must run an enabled key-intercepting cursor service to move a pointer.
+     * The two modes are intentionally separate because some TV apps implement
+     * cursor motion only when they see a stream of key events. Neither mode
+     * requires any projector-side application.
      */
-    @Synchronized fun cursorDirection(code: Int, releaseAfterMs: Long = 180L): Boolean {
-        if (code != Keys.UP && code != Keys.DOWN &&
-            code != Keys.LEFT && code != Keys.RIGHT) return false
-        if (heldKey != code) {
-            releaseHold()
-            // No queued stale shorts: one key down, repeated updates are
-            // deliberately coalesced until key up or direction change.
-            if (remote?.key(code, Remote.DIR_START_LONG) != true) return false
-            heldKey = code
+    @Synchronized fun beginDpad(code: Int, repeatShorts: Boolean, intervalMs: Int = 95): Boolean {
+        if (code !in setOf(Keys.UP, Keys.DOWN, Keys.LEFT, Keys.RIGHT)) return false
+        releaseHold()
+        if (!repeatShorts) return beginRemoteHold(code)
+        val link = remote ?: return false
+        if (link.key(code, Remote.DIR_SHORT) != true) return false
+        repeatingCode = code
+        val generation = ++dpadRepeatGeneration
+        val interval = intervalMs.coerceIn(60, 250).toLong()
+        val pulse = object : Runnable {
+            override fun run() {
+                synchronized(this@TvManager) {
+                    if (generation != dpadRepeatGeneration || repeatingCode != code) return
+                    if (remote?.key(code, Remote.DIR_SHORT) != true) {
+                        stopDpadRepeat()
+                        return
+                    }
+                    dpadRepeater = this
+                    main.postDelayed(this, interval)
+                }
+            }
         }
-        lastSliderCode = null
-        lastSliderAt = 0L
-        endHold?.let { main.removeCallbacks(it) }
-        val release = Runnable { releaseHold() }
-        endHold = release
-        main.postDelayed(release, releaseAfterMs.coerceIn(70L, 1000L))
+        dpadRepeater = pulse
+        main.postDelayed(pulse, interval)
         return true
+    }
+
+    @Synchronized fun endDpad(code: Int) {
+        if (repeatingCode == code) stopDpadRepeat()
+        if (heldKey == code) releaseHold()
     }
 
     /**
