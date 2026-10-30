@@ -149,16 +149,19 @@ This branch is **not** the stable HandBridge APK. It uses a **different Android 
 - **Bluetooth mouse:** Pair the JMGO as a Bluetooth HID host for the phone and choose Mouse
   mode, then enable native Air Mouse. This sends actual relative mouse reports and pinch clicks.
   Pairing/host support on N1 Ultra is not yet verified.
-- **Wi-Fi cursor:** Android TV Remote v2 cannot send arbitrary mouse coordinates. To turn
-  the existing Wi-Fi arrow commands into a cursor, sideload the MIT-licensed
-  [Remouse 3.0](https://github.com/zy0816/remouse/releases/download/v3.0/Remouse-v3.0.apk)
-  to the JMGO, open Settings > Accessibility > Remouse > On, then enable **Wi-Fi cursor
-  adapter (Remouse)** in HandBridge. The band Air Mouse can then drive the cursor by
-  converting movement into held D-pad directions. OK clicks the highlighted element.
-  This is **directional emulation**, not a true free-moving pixel-accurate Wi-Fi mouse.
-  Apps without accessible clickable nodes may not respond; long-press OK changes Remouse
-  scroll mode and long-press BACK pauses Remouse. Don't enable Remouse until you've read
-  its instructions, as it takes over arrow navigation.
+- **JMGO browser cursor from D-pad:** The browser's existing cursor may move from held physical
+  remote arrows. HandBridge can reproduce on-wire Android TV Remote v2 `START_LONG`/`END_LONG`
+  pairs or calibrated repeated `SHORT` events (default 95 ms). Open **Remote → JMGO browser
+  D-pad calibration**, open the same browser page on JMGO and compare **Test DOWN hold (2s)**
+  with **Test DOWN repeat (2s)**. Select the behavior that reproduces the physical remote.
+  The actual cursor's movement/edge-scroll behavior is implemented by the browser, not by
+  HandBridge. No separate TV-side app is needed for this approach. Whether this input protocol
+  is handled identically to the physical remote remains a **device test**, not an established
+  fact. Touching arrows on the Remote tab sends down immediately and ends/repeats on release.
+- **Native Air Mouse** remains available only for Bluetooth HID hosts. The direct native
+  band engine supports discrete swipes and holds but not directional pinch-and-drag
+  begin/release classification; it cannot yet synthesize the same arrow hold duration
+  from a finger-drag gesture. Calibrate Wi-Fi D-pad behavior first.
 - Zoom keycodes are still only supported where the TV app recognizes them. This preview does
   not emulate arbitrary two-finger pinch zoom in every TV app.
 
@@ -169,5 +172,4 @@ those physical behaviors or of sub-100ms end-to-end response.
 
 Third-party notices: MIT (896kb Air Gestures band-core and beyondlevi Rokid Lumen band library)
 and MIT (callbacked Kinesis); source and copyright notices are in the pinned upstream
-`LICENSE-air-gestures`, `LICENSE-kinesis`, `LICENSE` files. Remouse is a separate
-third-party app; it is not included in HandBridge.
+`LICENSE-air-gestures`, `LICENSE-kinesis`, and `LICENSE` files.
