@@ -42,3 +42,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+
+// Own the band locally; no Android broadcasts in the native input path.
+dependencies {
+    implementation(project(":band"))
+}
