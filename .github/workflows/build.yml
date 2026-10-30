@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [main, "claude/**", car-calls-volume-preview]
+    branches: [main, "claude/**", car-calls-volume-preview, ytmusic-dsp-preview]
   pull_request:
   workflow_dispatch:
 
@@ -50,7 +50,7 @@ jobs:
           path: HandBridge.apk
       # Rolling pre-release so the APK can be downloaded straight onto the phone.
       - name: Publish rolling "latest" release
-        if: github.event_name != 'pull_request' && github.ref != 'refs/heads/car-calls-volume-preview'
+        if: github.event_name != 'pull_request' && github.ref != 'refs/heads/car-calls-volume-preview' && github.ref != 'refs/heads/ytmusic-dsp-preview'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-apk
@@ -73,3 +73,21 @@ jobs:
             Devices > Car mode. Grant the Phone calls permission for answer/end.
             Android Auto does not expose BMW amplifier volume to normal phone apps.
             Build-tested only; test all call gestures safely while parked.
+
+      - name: Publish YouTube Music DSP experimental preview
+        if: github.ref == 'refs/heads/ytmusic-dsp-preview' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ytmusic-dsp-preview-apk
+          name: Hand Bridge YouTube Music DSP Preview
+          prerelease: true
+          files: HandBridge.apk
+          body: |
+            Separate experimental app; does not overwrite original HandBridge.
+            Enable the bridge, choose Car media mode and switch on
+            "YouTube Music audio gain" under Devices. Start YouTube Music playback.
+            Use "Test music much quieter" and "Restore music level" buttons.
+            No ADB, Shizuku, root or companion app. Uses AudioEffect session broadcast.
+            Only attaches when YouTube Music announces an audio session, and may
+            be unsupported on recent Pixel / BMW Android Auto audio routing.
+            Does NOT change BMW's native amplifier/master-volume setting.
