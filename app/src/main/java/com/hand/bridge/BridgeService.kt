@@ -97,6 +97,7 @@ class BridgeService : Service() {
         val host = hid.host
         val tv = TvManager.connectedTv()
         return when {
+            Prefs.carMode(this) -> "Car media mode — controlling phone music, not car display"
             tv != null -> "Connected to ${tv.name} over Wi-Fi"
             host != null -> "Connected to ${host.name ?: host.address}"
             hid.registered -> "Ready — waiting for a device"
