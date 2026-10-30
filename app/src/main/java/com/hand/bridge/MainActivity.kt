@@ -423,6 +423,7 @@ class MainActivity : Activity() {
 
     private fun devicesPage(): () -> Unit {
         val hid = Bridge.hid(this)
+        val ytGainStatus = label(YoutubeMusicGain.status(), 12.5f, p.muted)
         page.addView(card {
             addView(label("Car / Android Auto · music and cellular calls", 17f, bold = true))
             addView(label("No Bluetooth mouse pairing with the BMW is needed. Media gestures go to the active music player on this Pixel; Android Auto may play that audio through the car.", 13.5f, p.muted), lp().margins(t = 5, b = 10))
@@ -440,7 +441,6 @@ class MainActivity : Activity() {
                 if (on) BridgeService.start(this@MainActivity)
                 rebuild()
             }, lp().margins(t = 10))
-            val ytGainStatus = label(YoutubeMusicGain.status(), 12.5f, p.muted)
             addView(ytGainStatus, lp().margins(t = 7))
             addView(hbox {
                 addView(pill("Test music much quieter", BtnStyle.SECONDARY) {
