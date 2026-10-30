@@ -1098,6 +1098,8 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             addView(row(key(Action.PREV, Glyph.Shape.PREV, "Previous"), key(Action.PLAY_PAUSE, Glyph.Shape.PLAY_PAUSE, "Play"), key(Action.NEXT, Glyph.Shape.NEXT, "Next")))
             addView(row(key(Action.VOL_DOWN, Glyph.Shape.VOL_DOWN, "Vol −"), key(Action.MUTE, Glyph.Shape.MUTE, "Mute"), key(Action.VOL_UP, Glyph.Shape.VOL_UP, "Vol +")), lp().margins(t = 12))
+            addView(row(key(Action.ZOOM_OUT, Glyph.Shape.DOT, "Zoom −"), spacer(), key(Action.ZOOM_IN, Glyph.Shape.PLUS, "Zoom +")), lp().margins(t = 12))
+            addView(label("Zoom keys work only where the receiving app handles zoom commands. They do not change the JMGO projector's physical image size.", 12f, p.muted))
             addView(row(spacer(), key(Action.POWER, Glyph.Shape.POWER, "Power"), spacer()), lp().margins(t = 12))
         })
         val sig = "${host?.address}|${tvLive?.id}"
