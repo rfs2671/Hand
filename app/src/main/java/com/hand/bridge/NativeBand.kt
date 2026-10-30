@@ -30,6 +30,18 @@ object NativeBand {
     private val counts = PointerCounts()
     private var framing = false
     private var buttons = 0
+    private var pointerTestOnly = false
+    @Volatile private var diagnostic = false
+    @Volatile var pointerMotionRecords = 0
+        private set
+    @Volatile var pointerPresses = 0
+        private set
+    @Volatile var pointerReleases = 0
+        private set
+    @Volatile var pointerLastAt = 0L
+        private set
+    @Volatile var pointerTotalMovement = 0.0
+        private set
     private val frame = Runnable { frame() }
 
     @Volatile var phase: Phase = Phase.STOPPED
@@ -59,16 +71,37 @@ object NativeBand {
         return result
     }
 
-    private val mapping = listOf(
+    /** Recognized gestures in the Lumen native engine. Discrete drag events are NOT supported. */
+    val GESTURES = listOf(
         "swipe_up", "swipe_down", "swipe_left", "swipe_right",
-        "index_tap", "middle_tap", "index_hold", "middle_hold",
-        "index_double", "middle_double", "dial_up", "dial_down"
-    ).joinToString(";") {
-        // Don't bind single- and double-tap simultaneously: the classifier
-        // otherwise intentionally waits up to 400ms to distinguish them.
-        val used = it !in setOf("index_double", "middle_double")
-        "$it=${if (used) "hb.$it" else ""}"
+        "index_tap", "index_double", "index_hold",
+        "middle_tap", "middle_double", "middle_hold",
+        "dial_up", "dial_down"
+    )
+
+    private fun mapping(): String = GESTURES.joinToString(";") { name ->
+        // Default: avoid the 400ms tap-vs-double wait when navigating.
+        // On the Test tab, enable doubles so all native gestures can be diagnosed.
+        val active = diagnostic || name !in setOf("index_double", "middle_double")
+        "$" + name + "=" + if (active) "hb.$" + name else ""
     } + ";hand=band"
+
+    /** Enables double-tap recognition during testing; restore low-latency mapping afterward. */
+    fun setDiagnostic(on: Boolean) {
+        if (diagnostic == on) return
+        diagnostic = on
+        link?.setMapping(mapping())
+        changed()
+    }
+    fun diagnosticEnabled() = diagnostic
+    fun clearPointerTests() {
+        pointerMotionRecords = 0
+        pointerPresses = 0
+        pointerReleases = 0
+        pointerTotalMovement = 0.0
+        pointerLastAt = 0L
+        changed()
+    }
 
     @Synchronized fun start(c: Context) {
         if (!enabled(c) || link != null) return
@@ -103,7 +136,10 @@ object NativeBand {
                         val key = "EVT_" + gesture.uppercase()
                         lastEvent = gesture
                         val mapped = Actions.resolve(Prefs.mapping(app), key)
-                        val sent = Bridge.handle(app, key, discrete = true)
+                        // The Test tab defaults to recognition-only. A successful request
+                        // means queued to output, NOT that the TV visibly acted on it.
+                        val sent: Boolean? = if (diagnostic && !AirGestures.sendWhileTesting) null
+                                             else Bridge.handle(app, key, discrete = true)
                         GestureTests.note(key, mapped, sent, fromBand = true)
                         changed()
                     }
@@ -117,7 +153,7 @@ object NativeBand {
         }
         val config = object : BandLink.Config {
             override fun paused() = false
-            override fun mapping() = mapping
+            override fun mapping() = mapping()
         }
         try {
             link = BandLink(app, listener, config).also { it.start() }
@@ -132,6 +168,7 @@ object NativeBand {
 
     @Synchronized fun stop() {
         pointerOn = false
+        pointerTestOnly = false
         runCatching { link?.setPointer(false, "") }
         runCatching { link?.stop() }
         link = null
@@ -141,16 +178,18 @@ object NativeBand {
     }
 
     /** This needs an actual HID mouse host; Android TV Remote v2 has no mouse-coordinate messages. */
-    fun setPointer(on: Boolean): Boolean {
+    fun setPointer(on: Boolean, testOnly: Boolean = false): Boolean {
         val app = ctx ?: return false
         val hidAvailable = Bridge.hid(app).host != null && Bridge.activeMode(app) == Mode.MOUSE
         val wifiCursor = Prefs.tvCursor(app) && TvManager.isTarget()
-        if (on && !hidAvailable && !wifiCursor) {
+        if (on && !testOnly && !hidAvailable && !wifiCursor) {
             error = "Connect a Bluetooth HID mouse host or enable Wi-Fi cursor with Remouse on the TV"
             changed()
             return false
         }
         pointerOn = on
+        pointerTestOnly = testOnly && on
+        if (pointerTestOnly) clearPointerTests()
         val accepted = link?.setPointer(on, if (on) "steadiness=0.5;boost=1.0" else "") ?: false
         if (!accepted) pointerOn = false
         if (!pointerOn) releaseMouse()
@@ -163,10 +202,23 @@ object NativeBand {
         var i = 0
         while (i + 3 < a.size) {
             when (a[i]) {
-                0.0 -> pacer.add(a[i + 2] * 40.0, a[i + 3] * 40.0, a[i + 1])
+                0.0 -> {
+                    pointerMotionRecords++
+                    pointerLastAt = SystemClock.elapsedRealtime()
+                    pointerTotalMovement += kotlin.math.hypot(a[i + 2], a[i + 3])
+                    if (!pointerTestOnly) pacer.add(a[i + 2] * 40.0, a[i + 3] * 40.0, a[i + 1])
+                }
                 1.0 -> { pacer.clear(); counts.reset() }
                 2.0 -> {
                     val nextButtons = a[i + 2].toInt()
+                    if (buttons == 0 && nextButtons != 0) pointerPresses++
+                    if (buttons != 0 && nextButtons == 0) pointerReleases++
+                    pointerLastAt = SystemClock.elapsedRealtime()
+                    if (pointerTestOnly) {
+                        buttons = nextButtons
+                        i += 4
+                        continue
+                    }
                     val app = ctx
                     if (app != null && Prefs.tvCursor(app) && TvManager.isTarget() &&
                         (Bridge.hid(app).host == null || Bridge.activeMode(app) != Mode.MOUSE)) {
@@ -182,6 +234,7 @@ object NativeBand {
             }
             i += 4
         }
+        if (pointerTestOnly) { changed(); return }
         if (!framing && !pacer.isEmpty) {
             framing = true
             main.post(frame)
