@@ -24,6 +24,10 @@ object Diagnostics {
         appendLine("Car media mode: ${Prefs.carMode(ctx)} (phone media only; no BMW display control)")
         appendLine("Phone call permission: ${PhoneCalls.permitted(ctx)}; last: ${PhoneCalls.lastStatus}")
         appendLine("Phone volume: ${PhoneAudio.level(ctx)}; last: ${PhoneAudio.lastStatus}")
+        appendLine("2026 BMW media route probe: enabled ${Prefs.remoteCarVolume(ctx)}")
+        appendLine("2026 BMW selected audio route: ${CarVolumeRoute.describe(ctx)}")
+        appendLine("2026 BMW routes: ${CarVolumeRoute.allRoutes(ctx)}")
+        appendLine("2026 BMW remote volume last request: ${CarVolumeRoute.lastResult}")
         if (Prefs.carMode(ctx)) appendLine("Preset: index tap=play/pause, thumb left/right=previous/next, dial=phone volume")
         appendLine("Bridge on: ${Prefs.enabled(ctx)} · accessibility: $a11y · Air Gestures installed: ${AirGestures.installed(ctx)} · band: ${AirGestures.bandConnected} ${if (AirGestures.battery >= 0) "${AirGestures.battery}%" else ""}")
 
