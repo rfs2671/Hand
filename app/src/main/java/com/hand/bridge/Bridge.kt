@@ -72,12 +72,15 @@ object Bridge {
 
     private val CAR_ACTIONS = setOf(
         Action.PLAY_PAUSE, Action.NEXT, Action.PREV,
-        Action.VOL_UP, Action.VOL_DOWN, Action.MUTE
+        Action.VOL_UP, Action.VOL_DOWN, Action.MUTE,
+        Action.ANSWER_CALL, Action.END_CALL
     )
 
     /** Deliberately simple car-only preset; it never mutates projector mappings. */
     private val CAR_GESTURES = mapOf(
         "EVT_INDEX_TAP" to Action.PLAY_PAUSE,
+        "EVT_MIDDLE_TAP" to Action.ANSWER_CALL,
+        "EVT_INDEX_HOLD" to Action.END_CALL,
         "EVT_SWIPE_LEFT" to Action.PREV,
         "EVT_SWIPE_RIGHT" to Action.NEXT,
         "EVT_INDEX_LEFT_RIGHT_UP" to Action.NEXT,
@@ -151,7 +154,7 @@ object Bridge {
             Action.SCROLL_DOWN -> Keys.PAGE_DOWN
             Action.ZOOM_IN -> Keys.ZOOM_IN
             Action.ZOOM_OUT -> Keys.ZOOM_OUT
-            Action.POWER, Action.NONE -> null
+            Action.POWER, Action.NONE, Action.ANSWER_CALL, Action.END_CALL -> null
         }
     }
 
@@ -185,7 +188,7 @@ object Bridge {
                 if (mode == Mode.MOUSE) h.mouse(0, 0, 0, -3) else h.key(HidBridge.K_PAGE_DOWN)
             Action.ZOOM_IN -> h.key(HidBridge.K_EQUAL, HidBridge.MOD_CTRL)
             Action.ZOOM_OUT -> h.key(HidBridge.K_MINUS, HidBridge.MOD_CTRL)
-            Action.NONE, Action.POWER -> return false
+            Action.NONE, Action.POWER, Action.ANSWER_CALL, Action.END_CALL -> return false
         }
         return true
     }
@@ -207,9 +210,11 @@ object Bridge {
             Action.PLAY_PAUSE -> media(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
             Action.NEXT -> media(KeyEvent.KEYCODE_MEDIA_NEXT)
             Action.PREV -> media(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-            Action.VOL_UP -> vol(AudioManager.ADJUST_RAISE)
-            Action.VOL_DOWN -> vol(AudioManager.ADJUST_LOWER)
-            Action.MUTE -> vol(AudioManager.ADJUST_TOGGLE_MUTE)
+            Action.VOL_UP -> if (Prefs.carMode(ctx)) return PhoneAudio.adjust(ctx, AudioManager.ADJUST_RAISE) else vol(AudioManager.ADJUST_RAISE)
+            Action.VOL_DOWN -> if (Prefs.carMode(ctx)) return PhoneAudio.adjust(ctx, AudioManager.ADJUST_LOWER) else vol(AudioManager.ADJUST_LOWER)
+            Action.MUTE -> if (Prefs.carMode(ctx)) return PhoneAudio.adjust(ctx, AudioManager.ADJUST_TOGGLE_MUTE) else vol(AudioManager.ADJUST_TOGGLE_MUTE)
+            Action.ANSWER_CALL -> return PhoneCalls.answer(ctx)
+            Action.END_CALL -> return PhoneCalls.end(ctx)
             Action.BACK -> svc?.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
             Action.HOME -> svc?.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
             Action.MENU -> svc?.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS)
