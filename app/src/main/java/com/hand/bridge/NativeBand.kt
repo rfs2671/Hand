@@ -254,14 +254,14 @@ object NativeBand {
                 ctx?.let { app ->
                     if (Prefs.tvCursor(app) && TvManager.isTarget() &&
                         (Bridge.hid(app).host == null || Bridge.activeMode(app) != Mode.MOUSE)) {
-                        // Fallback for a Wi-Fi-only JMGO: direction-key motion drives the
-                        // projector-side Remouse cursor. Not real x/y pointer coordinates.
+                        // Stream held DPAD direction to projector-side Remouse, starting
+                        // with the first motion sample; no delayed slider detection.
                         val horizontal = kotlin.math.abs(whole[0]) >= kotlin.math.abs(whole[1])
                         val d = if (horizontal) whole[0] else whole[1]
                         val code = if (horizontal) {
                             if (d > 0) Keys.RIGHT else Keys.LEFT
                         } else if (d > 0) Keys.DOWN else Keys.UP
-                        TvManager.continuousKey(code, (kotlin.math.abs(d) / 10).coerceIn(1, 6), 90L)
+                        TvManager.cursorDirection(code, 180L)
                     } else {
                         Bridge.hid(app).mouse(buttons, whole[0], whole[1])
                     }
