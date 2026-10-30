@@ -131,7 +131,7 @@ class MainActivity : Activity() {
         val root = vbox { setBackgroundColor(p.bg) }
         root.addView(vbox {
             setPadding(Ui.dp(22), Ui.dp(18), Ui.dp(22), Ui.dp(6))
-            addView(label("Hand Bridge", 28f, bold = true))
+            addView(label("Hand Bridge · Car Preview", 26f, bold = true))
             headerSub = label("", 14f, p.muted).apply { setPadding(0, Ui.dp(2), 0, 0) }
             addView(headerSub)
         })
