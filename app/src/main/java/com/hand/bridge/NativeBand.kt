@@ -157,7 +157,7 @@ object NativeBand {
         }
         val config = object : BandLink.Config {
             override fun paused() = false
-            override fun mapping() = mapping()
+            override fun mapping(): String = NativeBand.mapping()
         }
         try {
             link = BandLink(app, listener, config).also { it.start() }
