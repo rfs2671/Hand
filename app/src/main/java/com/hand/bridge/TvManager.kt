@@ -101,6 +101,29 @@ object TvManager {
     }
 
 
+    /**
+     * Physical on-screen directional button hold. The touch UI sends a short key
+     * immediately, then begins a long key only after the finger stays down.
+     * Always release explicitly on touch-up/cancel or when the view is removed.
+     */
+    @Synchronized fun beginRemoteHold(code: Int): Boolean {
+        releaseHold()
+        val ok = remote?.key(code, Remote.DIR_START_LONG) == true
+        if (ok) heldKey = code
+        return ok
+    }
+
+    @Synchronized fun endRemoteHold(code: Int) {
+        if (heldKey == code) releaseHold()
+    }
+
+    /** Called on touch-pad lift to ensure the TV receives KEY_UP. */
+    @Synchronized fun endPointerGesture() {
+        releaseHold()
+        lastSliderCode = null
+        lastSliderAt = 0L
+    }
+
     /** Latest in-app delay (key queued -> written to the socket), for the speed check. */
     val lastSendDelayMs: Double get() = remote?.lastSendDelayMs ?: -1.0
 
