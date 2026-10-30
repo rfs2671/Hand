@@ -76,3 +76,20 @@ jobs:
           prerelease: true
           files: HandBridge.apk
           body: Auto-built from the latest push. Install HandBridge.apk on your Android phone (allow "install unknown apps").
+
+      # Isolated prerelease: different app ID so the working HandBridge stays installed.
+      - name: Publish isolated native preview release
+        if: github.ref == 'refs/heads/native-band-pointer-preview' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: native-preview-apk
+          name: Experimental Native Band Preview
+          prerelease: true
+          files: HandBridge.apk
+          body: |
+            Experimental direct Meta Neural Band input and Bluetooth air mouse.
+            This is a separate Android package, not an update to stable HandBridge.
+            Import the existing Air Gestures owner-key export and stop the Air Gestures band connection.
+            JMGO Wi-Fi remote cannot receive cursor coordinates. Use a compatible Bluetooth HID mouse host
+            or install a projector-side D-pad cursor accessibility app such as Remouse.
+            No phone or JMGO hardware validation has been performed.
