@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import com.hand.bridge.atv.Keys
 import dev.lumen.band.BandLink
 import dev.lumen.band.GestureDevice
 import dev.lumen.band.Identity
@@ -142,8 +143,10 @@ object NativeBand {
     /** This needs an actual HID mouse host; Android TV Remote v2 has no mouse-coordinate messages. */
     fun setPointer(on: Boolean): Boolean {
         val app = ctx ?: return false
-        if (on && (Bridge.hid(app).host == null || Bridge.activeMode(app) != Mode.MOUSE)) {
-            error = "For a real projector cursor, pair the JMGO as a Bluetooth mouse host"
+        val hidAvailable = Bridge.hid(app).host != null && Bridge.activeMode(app) == Mode.MOUSE
+        val wifiCursor = Prefs.tvCursor(app) && TvManager.isTarget()
+        if (on && !hidAvailable && !wifiCursor) {
+            error = "Connect a Bluetooth HID mouse host or enable Wi-Fi cursor with Remouse on the TV"
             changed()
             return false
         }
@@ -163,8 +166,18 @@ object NativeBand {
                 0.0 -> pacer.add(a[i + 2] * 40.0, a[i + 3] * 40.0, a[i + 1])
                 1.0 -> { pacer.clear(); counts.reset() }
                 2.0 -> {
-                    buttons = a[i + 2].toInt()
-                    ctx?.let { Bridge.hid(it).mouse(buttons, 0, 0) }
+                    val nextButtons = a[i + 2].toInt()
+                    val app = ctx
+                    if (app != null && Prefs.tvCursor(app) && TvManager.isTarget() &&
+                        (Bridge.hid(app).host == null || Bridge.activeMode(app) != Mode.MOUSE)) {
+                        // Remouse consumes OK as a click, but accepts no touch coordinates.
+                        if (buttons != 0 && nextButtons == 0) {
+                            TvManager.key(if (buttons and 1 != 0) Keys.CENTER else Keys.MENU)
+                        }
+                    } else {
+                        app?.let { Bridge.hid(it).mouse(nextButtons, 0, 0) }
+                    }
+                    buttons = nextButtons
                 }
             }
             i += 4
@@ -181,7 +194,21 @@ object NativeBand {
         pacer.take(SystemClock.elapsedRealtimeNanos() / 1e9)?.let { delta ->
             val whole = counts.add(delta[0], delta[1])
             if (whole[0] != 0 || whole[1] != 0) {
-                ctx?.let { Bridge.hid(it).mouse(buttons, whole[0], whole[1]) }
+                ctx?.let { app ->
+                    if (Prefs.tvCursor(app) && TvManager.isTarget() &&
+                        (Bridge.hid(app).host == null || Bridge.activeMode(app) != Mode.MOUSE)) {
+                        // Fallback for a Wi-Fi-only JMGO: direction-key motion drives the
+                        // projector-side Remouse cursor. Not real x/y pointer coordinates.
+                        val horizontal = kotlin.math.abs(whole[0]) >= kotlin.math.abs(whole[1])
+                        val d = if (horizontal) whole[0] else whole[1]
+                        val code = if (horizontal) {
+                            if (d > 0) Keys.RIGHT else Keys.LEFT
+                        } else if (d > 0) Keys.DOWN else Keys.UP
+                        TvManager.continuousKey(code, (kotlin.math.abs(d) / 10).coerceIn(1, 6))
+                    } else {
+                        Bridge.hid(app).mouse(buttons, whole[0], whole[1])
+                    }
+                }
             }
         }
         if (!pacer.isEmpty) {
