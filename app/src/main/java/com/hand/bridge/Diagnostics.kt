@@ -24,6 +24,8 @@ object Diagnostics {
         appendLine("Car media mode: ${Prefs.carMode(ctx)} (phone media only; no BMW display control)")
         appendLine("Phone call permission: ${PhoneCalls.permitted(ctx)}; last: ${PhoneCalls.lastStatus}")
         appendLine("Phone volume: ${PhoneAudio.level(ctx)}; last: ${PhoneAudio.lastStatus}")
+        appendLine("YouTube Music DSP opted in: ${Prefs.youtubeGain(ctx)}; active: ${YoutubeMusicGain.active(ctx)}")
+        appendLine("YouTube Music DSP: ${YoutubeMusicGain.status()} | error: ${YoutubeMusicGain.lastError}")
         if (Prefs.carMode(ctx)) appendLine("Preset: index tap=play/pause, thumb left/right=previous/next, dial=phone volume")
         appendLine("Bridge on: ${Prefs.enabled(ctx)} · accessibility: $a11y · Air Gestures installed: ${AirGestures.installed(ctx)} · band: ${AirGestures.bandConnected} ${if (AirGestures.battery >= 0) "${AirGestures.battery}%" else ""}")
 
