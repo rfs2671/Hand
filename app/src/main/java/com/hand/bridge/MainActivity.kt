@@ -119,6 +119,8 @@ class MainActivity : Activity() {
         Bridge.learn = null
         dialogTick = null
         AirGestures.testing = false
+        NativeBand.setDiagnostic(false)
+        NativeBand.stopPointerTest()
         dialog?.dismiss()
         stopDiscovery()
         pairing?.close()
@@ -179,6 +181,12 @@ class MainActivity : Activity() {
     private fun showTab(t: Tab) {
         if (t != tab) Bridge.learn = null
         AirGestures.testing = t == Tab.TEST
+        val native = NativeBand.enabled(this)
+        if (native) {
+            if (t != Tab.TEST) NativeBand.stopPointerTest()
+            if (t == Tab.TEST && tab != Tab.TEST) AirGestures.sendWhileTesting = false
+            NativeBand.setDiagnostic(t == Tab.TEST)
+        }
         tab = t
         paintNav()
         page.removeAllViews()
@@ -949,6 +957,9 @@ class MainActivity : Activity() {
         )
     }
 
+    /** Live native sensor counters on the Test tab, no device output. */
+    private var nativePointerView: TextView? = null
+
     // ---- test -----------------------------------------------------------------------------
 
     private fun testGroup(key: String) = when {
@@ -963,19 +974,46 @@ class MainActivity : Activity() {
      * connected device. Tapping a row tries the action without the band.
      */
     private fun testPage(): () -> Unit {
-        AirGestures.sendWhileTesting = TvManager.connected || Bridge.hid(this).host != null
+        val native = NativeBand.enabled(this)
+        if (!native) AirGestures.sendWhileTesting = TvManager.connected || Bridge.hid(this).host != null
         val summary = label("", 17f, bold = true)
         val bar = hbox { background = Ui.rounded(p.surface2, 4) }
         page.addView(card {
             addView(summary)
             addView(bar, lp(h = Ui.dp(6)).margins(t = 10, b = 8))
-            addView(label("Do each gesture on your band. A row turns green when Hand Bridge receives it and its action is sent. Tap a row to try its action without the band.", 14f, p.muted))
+            addView(label(
+                if (native) "Do each gesture. Received means the band recognized it. Command queued means the app accepted it—not that the projector responded. Double taps are enabled only while this Test tab is open, so index/middle single taps may have extra recognition delay."
+                else "Do each gesture on your band. Received means Hand Bridge saw it; command queued does not confirm the projector acted. Tap a row to test its assigned action.",
+                14f, p.muted
+            ))
             addView(divider(), lp(h = Ui.dp(1)).margins(t = 12))
-            addView(toggleRow("Send actions to the connected device", "Off: gestures are recognised and shown, but nothing is sent anywhere.", AirGestures.sendWhileTesting) {
+            addView(toggleRow("Send actions to the connected device", "Off: recognition-only diagnostic. For native input, leave off while measuring. On: try forwarding mapped actions.", AirGestures.sendWhileTesting) {
                 AirGestures.sendWhileTesting = it
             })
             addView(pill("Reset results", BtnStyle.TEXT) { GestureTests.clear(); rebuild() })
         })
+        if (native) {
+            val pointerSummary = label("", 14f, p.muted)
+            page.addView(card {
+                addView(label("Air Mouse sensor test", 17f, bold = true))
+                addView(label("With the band connected: tap Start, rotate your forearm to move the imaginary cursor, pinch index to press and release. No command is sent to the projector.", 13f, p.muted), lp().margins(t = 5, b = 8))
+                addView(pointerSummary, lp().margins(b = 8))
+                addView(pill("Start / stop sensor-only Air Mouse", BtnStyle.SECONDARY) {
+                    val ok = NativeBand.setPointer(!NativeBand.pointerTesting(), testOnly = true)
+                    if (!ok && !NativeBand.pointerTesting()) toast("Connect the native band first, then try again.")
+                })
+                addView(pill("Clear pointer counters", BtnStyle.TEXT) { NativeBand.clearPointerTests() }, lp().margins(t = 4))
+            })
+            // The display refreshes from the existing main-thread 700ms ticker.
+            nativePointerView = pointerSummary
+            page.addView(card {
+                addView(label("Not available in this native engine", 15f, bold = true))
+                addView(label("Discrete index/middle drag-up/down/left/right, slider axes, and middle-finger zoom are not exposed by the imported Lumen gesture engine. Air Mouse has continuous motion instead; its movement and pinch presses are tested above.", 13f, p.muted), lp().margins(t = 6))
+            })
+        } else {
+            nativePointerView = null
+        }
+
         // Speed: keep Wi-Fi awake and measure the link to the TV.
         val speedText = label("", 14f, p.muted)
         page.addView(card {
@@ -1016,10 +1054,11 @@ class MainActivity : Activity() {
         fun draw() {
             val map = Prefs.mapping(this)
             val order = Actions.defaults.keys.toList()
-            val keys = (map.keys + GestureTests.keys()).filter { Actions.isBand(it) && it != "EVT_TEST" }.distinct()
-                .sortedWith(compareBy({ order.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }, { it }))
+            val keys = if (native) NativeBand.GESTURES.map { "EVT_" + it.uppercase() } else
+                (map.keys + GestureTests.keys()).filter { Actions.isBand(it) && it != "EVT_TEST" }.distinct()
+                    .sortedWith(compareBy({ order.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }, { it }))
             val seen = GestureTests.seenFromBand(keys)
-            summary.text = "$seen of ${keys.size} gestures seen from your band"
+            summary.text = "$seen of ${keys.size} ${if (native) "native" else ""} gesture types recognized"
             bar.removeAllViews()
             bar.addView(View(this).apply { background = Ui.rounded(p.accent, 4) }, lp(0, Ui.dp(6), seen.toFloat()))
             bar.addView(View(this), lp(0, Ui.dp(6), (keys.size - seen).coerceAtLeast(0).toFloat()))
@@ -1039,8 +1078,8 @@ class MainActivity : Activity() {
                         val r = GestureTests.get(key)
                         val (chip, color) = when (st) {
                             GestureTests.Status.NOT_TRIED -> "Not tried" to p.muted
-                            GestureTests.Status.WORKS -> "✓ Works" to p.good
-                            GestureTests.Status.BAND_ONLY -> "✓ Received" to p.good
+                            GestureTests.Status.WORKS -> "✓ Forwarded" to p.good
+                            GestureTests.Status.BAND_ONLY -> "✓ Recognized" to p.good
                             GestureTests.Status.BAND_NOT_SENT -> "Received, not sent" to p.warn
                             GestureTests.Status.NO_ACTION -> "No action" to p.warn
                             GestureTests.Status.DEVICE_ONLY -> "Action works" to p.accent
@@ -1050,9 +1089,9 @@ class MainActivity : Activity() {
                             append(if (action == Action.NONE) "No action assigned" else "→ ${action.label}")
                             if (r != null && r.bandCount > 0) append(" · received ${r.bandCount}× ${ago(r.bandAt)}")
                             when (r?.sent) {
-                                true -> append(" · sent to $target")
+                                true -> append(" · forwarded toward $target (no device acknowledgment)")
                                 false -> append(" · couldn't send (nothing connected can do this)")
-                                null -> if (r != null && r.bandCount > 0) append(" · not sent (test only)")
+                                null -> if (r != null && r.bandCount > 0) append(" · not sent (recognition only)")
                             }
                             if (r == null && action != Action.NONE) append(" · tap to try")
                         }
@@ -1071,6 +1110,9 @@ class MainActivity : Activity() {
 
         var sig = Long.MIN_VALUE
         return {
+            if (native) {
+                nativePointerView?.text = "Connection: ${NativeBand.phase} · Air Mouse: ${if (NativeBand.pointerTesting()) "SENSOR TEST ON" else if (NativeBand.pointerOn) "output mode" else "OFF"}\nMotion records: ${NativeBand.pointerMotionRecords} · Movement: ${"%.1f".format(NativeBand.pointerTotalMovement)}°\nPinch presses: ${NativeBand.pointerPresses} · releases: ${NativeBand.pointerReleases}"
+            }
             val s = GestureTests.signature() + System.currentTimeMillis() / 5000
             if (s != sig) { sig = s; draw() }
         }
