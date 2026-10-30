@@ -51,6 +51,43 @@ object TvManager {
     private val pending = PendingKeys()
     private var wifiLock: WifiManager.WifiLock? = null
 
+    // Android TV Remote v2 supports proper key-down / key-up semantics. Keep the last
+    // slider direction held while events are coming in, then release if they stop.
+    // Air Gestures batches sliders (currently 250 ms): the deadline must exceed that
+    // interval, but should be short enough to stop scrolling promptly.
+    private var heldKey: Int? = null
+    private var endHold: Runnable? = null
+    private const val HOLD_IDLE_MS = 340L
+
+    @Synchronized private fun releaseHold() {
+        endHold?.let { main.removeCallbacks(it) }
+        endHold = null
+        heldKey?.let { remote?.key(it, Remote.DIR_END_LONG) }
+        heldKey = null
+    }
+
+    /**
+     * Continuous D-pad navigation while a dial/slider moves.
+     * Unlike a sequence of SHORT keys, this lets the TV apply its own key-repeat behavior.
+     * It does NOT create touchpad coordinates or multi-touch on Android TV.
+     */
+    @Synchronized fun continuousKey(code: Int): Boolean {
+        if (heldKey != code) {
+            releaseHold()
+            val active = remote
+            if (active?.key(code, Remote.DIR_START_LONG) != true) {
+                return hold(code, Remote.DIR_SHORT)
+            }
+            heldKey = code
+        }
+        endHold?.let { main.removeCallbacks(it) }
+        val toEnd = Runnable { releaseHold() }
+        endHold = toEnd
+        main.postDelayed(toEnd, HOLD_IDLE_MS)
+        return true
+    }
+
+
     /** Latest in-app delay (key queued -> written to the socket), for the speed check. */
     val lastSendDelayMs: Double get() = remote?.lastSendDelayMs ?: -1.0
 
@@ -113,11 +150,13 @@ object TvManager {
     }
 
     fun disconnect() {
+        releaseHold()
         wanted = false
         io.execute { runCatching { dropConnection() }; set(TvState.IDLE) }
     }
 
     private fun dropConnection() {
+        releaseHold()
         val r = remote
         remote = null
         runCatching { r?.close() }
@@ -196,12 +235,14 @@ object TvManager {
      * at once, and the key is sent when the TV is back (otherwise the gesture would simply be lost).
      */
     fun key(code: Int, direction: Int = Remote.DIR_SHORT): Boolean {
+        if (direction == Remote.DIR_SHORT) releaseHold()
         if (remote?.key(code, direction) == true) return true
         return hold(code, direction)
     }
 
     /** [count] presses spaced [intervalMs] apart so each step shows on the TV (a slide). */
     fun keys(code: Int, count: Int, intervalMs: Long): Boolean {
+        releaseHold()
         if (remote?.keys(code, count, intervalMs) == true) return true
         repeat(minOf(count, 2)) { hold(code, Remote.DIR_SHORT) } // a couple catch the TV up; more would overshoot
         return isTarget()
