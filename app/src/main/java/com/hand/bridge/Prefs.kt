@@ -22,6 +22,14 @@ data class Tv(
 object Prefs {
     private fun sp(c: Context) = c.applicationContext.getSharedPreferences("hand", Context.MODE_PRIVATE)
 
+    /**
+     * Manual Android Auto output override. Android Auto does NOT expose the
+     * car display as a Bluetooth HID host; route supported media keys to the
+     * phone's media session instead. This never attempts to pair with the BMW.
+     */
+    fun carMode(c: Context) = sp(c).getBoolean("car_mode", false)
+    fun setCarMode(c: Context, enabled: Boolean) = sp(c).edit().putBoolean("car_mode", enabled).apply()
+
     fun enabled(c: Context) = sp(c).getBoolean("enabled", false)
     fun setEnabled(c: Context, v: Boolean) = sp(c).edit().putBoolean("enabled", v).apply()
 
