@@ -8,12 +8,12 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.hand.bridge.carpreview"
+        applicationId = "com.hand.bridge.ytpreview"
         minSdk = 31
         targetSdk = 34
         // CI run number, so every published APK installs as an update over the previous one.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "0.2.1-car-preview"
+        versionName = "0.2.2-yt-music-dsp-preview"
     }
 
     // One permanent key (from CI secrets) keeps updates installable. Without it the build falls
