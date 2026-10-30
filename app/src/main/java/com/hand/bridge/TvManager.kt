@@ -73,7 +73,7 @@ object TvManager {
      * Unlike a sequence of SHORT keys, this lets the TV apply its own key-repeat behavior.
      * It does NOT create touchpad coordinates or multi-touch on Android TV.
      */
-    @Synchronized fun continuousKey(code: Int, steps: Int = 1): Boolean {
+    @Synchronized fun continuousKey(code: Int, steps: Int = 1, releaseAfterMs: Long = HOLD_IDLE_MS): Boolean {
         val now = android.os.SystemClock.uptimeMillis()
         if (heldKey != code) {
             releaseHold()
@@ -96,7 +96,7 @@ object TvManager {
         endHold?.let { main.removeCallbacks(it) }
         val toEnd = Runnable { releaseHold() }
         endHold = toEnd
-        main.postDelayed(toEnd, HOLD_IDLE_MS)
+        main.postDelayed(toEnd, releaseAfterMs.coerceIn(60L, 1000L))
         return true
     }
 
