@@ -934,10 +934,11 @@ class MainActivity : Activity() {
         val speedText = label("", 14f, p.muted)
         page.addView(card {
             addView(label("Speed", 17f, bold = true))
-            addView(toggleRow("Low-latency Wi-Fi", "Stops Wi-Fi from sleeping while a TV is connected, so gestures arrive faster and steadier. Uses more battery.", Prefs.lowLatency(context)) {
+            addView(toggleRow("Low-latency Wi-Fi", "Prioritizes Wi-Fi responsiveness while the screen is on and the app is foreground. Does not eliminate Air Gestures batching.", Prefs.lowLatency(context)) {
                 Prefs.setLowLatency(this@MainActivity, it)
                 TvManager.refreshLocks(this@MainActivity)
             })
+            addView(label("Band dial/slider updates can be batched up to 250 ms by Air Gestures. This test only checks the TV's TCP connection time, not the time from your fingers to the screen.", 12f, p.muted))
             addView(speedText, lp().margins(t = 4, b = 8))
             addView(pill("Measure speed", BtnStyle.SECONDARY) {
                 val host = TvManager.tv?.host ?: Prefs.tvs(this@MainActivity).firstOrNull()?.host
@@ -954,7 +955,7 @@ class MainActivity : Activity() {
                                 st.avgMs < 25 && st.maxMs < 80 -> "Fast and steady."
                                 else -> "Fine, with some jitter."
                             }
-                            "Wi-Fi to the TV: average ${"%.0f".format(st.avgMs)} ms, worst ${"%.0f".format(st.maxMs)} ms, ${st.ok} of ${st.sent} answered.\n" +
+                            "TCP connection to TV: average ${"%.0f".format(st.avgMs)} ms, worst ${"%.0f".format(st.maxMs)} ms, ${st.ok} of ${st.sent} answered.\n" +
                                 (if (inApp >= 0) "Last key waited ${"%.1f".format(inApp)} ms inside the app.\n" else "") + verdict
                         }
                     }
