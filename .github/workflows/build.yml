@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [main, "claude/**", car-calls-volume-preview]
+    branches: [main, "claude/**", car-calls-volume-preview, bmw26-volume-route-preview]
   pull_request:
   workflow_dispatch:
 
@@ -50,7 +50,7 @@ jobs:
           path: HandBridge.apk
       # Rolling pre-release so the APK can be downloaded straight onto the phone.
       - name: Publish rolling "latest" release
-        if: github.event_name != 'pull_request' && github.ref != 'refs/heads/car-calls-volume-preview'
+        if: github.event_name != 'pull_request' && github.ref != 'refs/heads/car-calls-volume-preview' && github.ref != 'refs/heads/bmw26-volume-route-preview'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-apk
@@ -73,3 +73,19 @@ jobs:
             Devices > Car mode. Grant the Phone calls permission for answer/end.
             Android Auto does not expose BMW amplifier volume to normal phone apps.
             Build-tested only; test all call gestures safely while parked.
+
+      - name: Publish BMW remote route experimental APK
+        if: github.ref == 'refs/heads/bmw26-volume-route-preview' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bmw26-volume-route-apk
+          name: HandBridge 2026 BMW Route Test
+          prerelease: true
+          files: HandBridge.apk
+          body: |
+            Separate package com.hand.bridge.bmwvolumeprobe; original HandBridge is untouched.
+            No ADB, Shizuku, root or extra app. Enter Devices > Car media mode.
+            Probe attempts volume only when Android exposes a selected remote, variable
+            BMW/Android Auto media route. No fallback to phone volume.
+            Failure to see such a route means Android's public route APIs cannot
+            adjust this BMW's amplifier from the smartphone. Test parked.
