@@ -9,6 +9,7 @@ enum class Action(val label: String) {
     PLAY_PAUSE("Play / pause"), NEXT("Next track"), PREV("Previous track"),
     VOL_UP("Volume up"), VOL_DOWN("Volume down"), MUTE("Mute"),
     SCROLL_UP("Scroll up"), SCROLL_DOWN("Scroll down"),
+    ZOOM_IN("Zoom in (supported apps)"), ZOOM_OUT("Zoom out (supported apps)"),
     POWER("Power on / off");
 
     /** Actions that make sense to keep firing while a key is held. */
@@ -40,7 +41,7 @@ object Actions {
         "EVT_INDEX_DRAG_AWAY" to "SCROLL_UP", "EVT_INDEX_DRAG_TOWARD" to "SCROLL_DOWN",
         // Dials/sliders arrive as one event with signed "steps"; each step becomes _UP or _DOWN.
         "EVT_DIAL_UP" to "VOL_UP", "EVT_DIAL_DOWN" to "VOL_DOWN",
-        "EVT_MIDDLE_DIAL_UP" to "SCROLL_UP", "EVT_MIDDLE_DIAL_DOWN" to "SCROLL_DOWN",
+        "EVT_MIDDLE_DIAL_UP" to "ZOOM_IN", "EVT_MIDDLE_DIAL_DOWN" to "ZOOM_OUT",
         // Slides ("scroll") send steps too: + is right / up, - is left / down.
         "EVT_INDEX_LEFT_RIGHT_UP" to "RIGHT", "EVT_INDEX_LEFT_RIGHT_DOWN" to "LEFT",
         "EVT_INDEX_UP_DOWN_UP" to "UP", "EVT_INDEX_UP_DOWN_DOWN" to "DOWN",
