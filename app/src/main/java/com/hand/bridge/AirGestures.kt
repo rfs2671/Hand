@@ -62,7 +62,7 @@ object AirGestures {
         val reason = accept(ctx, receiver)
         record(i, reason)
         // Nothing is sent from here, but the Test tab still wants to know the gesture arrived.
-        if (reason == null) keyOf(i)?.let { GestureTests.note(it, Actions.resolve(Prefs.mapping(ctx), it), sent = null, fromBand = true) }
+        if (reason == null) keyOf(i)?.let { GestureTests.note(it, Bridge.resolve(ctx, it), sent = null, fromBand = true) }
     }
 
     /** True while the Test tab is open. */
@@ -136,7 +136,7 @@ object AirGestures {
         val steps = i.getIntExtra("steps", 0)
         // A dial/slide becomes one mapped input per step, e.g. EVT_DIAL_UP x3 (capped so a fast slide can't flood the host).
         val key = if (steps == 0) base else Actions.stepKey(base, steps)
-        val action = Actions.resolve(Prefs.mapping(ctx), key)
+        val action = Bridge.resolve(ctx, key)
         val n = if (steps == 0) 1 else minOf(abs(steps), Actions.stepCap(action))
         Trace.add("air: $key${if (n > 1) " x$n" else ""} -> $action")
         var sent: Boolean? = null
