@@ -22,6 +22,7 @@ object Bridge {
         }
 
     fun activeMode(ctx: Context): Mode {
+        if (Prefs.carMode(ctx)) return Mode.LOCAL
         val host = hid(ctx).host ?: return Mode.LOCAL
         return Prefs.device(ctx, host.address)?.mode ?: Mode.MOUSE
     }
@@ -30,7 +31,8 @@ object Bridge {
     fun claims(ctx: Context, input: String): Boolean {
         if (learn != null) return true
         if (!Prefs.enabled(ctx)) return false
-        val action = Actions.resolve(Prefs.mapping(ctx), input)
+        val action = resolve(ctx, input)
+        if (Prefs.carMode(ctx)) return action in CAR_ACTIONS
         if (action == Action.NONE) return false
         if (action == Action.POWER) return TvManager.connected || Prefs.tvs(ctx).isNotEmpty()
         if (TvManager.isTarget()) return true // a Wi-Fi TV understands every action
@@ -46,12 +48,18 @@ object Bridge {
         lastInput = input
         learn?.let { learn = null; it(input); return true } // one capture, even for a multi-step dial
         if (!claims(ctx, input)) return false
-        val action = Actions.resolve(Prefs.mapping(ctx), input)
+        val action = resolve(ctx, input)
         return perform(ctx, action, repeat, discrete)
     }
 
     fun perform(ctx: Context, action: Action, repeat: Int = 0, discrete: Boolean = false): Boolean {
         if (repeat > 0 && !action.repeats) return true
+        // Android Auto isn't a HID host or Wi-Fi TV. Explicit car mode must
+        // take priority over remembered devices and live TV connections.
+        if (Prefs.carMode(ctx)) {
+            if (action !in CAR_ACTIONS) return false
+            return local(ctx, action)
+        }
         if (action == Action.POWER) return TvManager.power(ctx)
         if (TvManager.isTarget()) {
             if (repeat > 0 && repeat % 3 != 0) return true // a held key repeats ~30x/s; the TV needs fewer
@@ -62,6 +70,28 @@ object Bridge {
         else viaHid(hid(ctx), mode, action, if (discrete) DISCRETE_REPEAT else repeat)
     }
 
+    private val CAR_ACTIONS = setOf(
+        Action.PLAY_PAUSE, Action.NEXT, Action.PREV,
+        Action.VOL_UP, Action.VOL_DOWN, Action.MUTE
+    )
+
+    /** Deliberately simple car-only preset; it never mutates projector mappings. */
+    private val CAR_GESTURES = mapOf(
+        "EVT_INDEX_TAP" to Action.PLAY_PAUSE,
+        "EVT_SWIPE_LEFT" to Action.PREV,
+        "EVT_SWIPE_RIGHT" to Action.NEXT,
+        "EVT_INDEX_LEFT_RIGHT_UP" to Action.NEXT,
+        "EVT_INDEX_LEFT_RIGHT_DOWN" to Action.PREV,
+        "EVT_DIAL_UP" to Action.VOL_UP,
+        "EVT_DIAL_DOWN" to Action.VOL_DOWN,
+        "EVT_MIDDLE_DIAL_UP" to Action.VOL_UP,
+        "EVT_MIDDLE_DIAL_DOWN" to Action.VOL_DOWN
+    )
+    fun carGestureAction(input: String): Action? = CAR_GESTURES[input]
+    fun resolve(ctx: Context, input: String): Action =
+        if (Prefs.carMode(ctx)) CAR_GESTURES[input] ?: Action.NONE
+        else Actions.resolve(Prefs.mapping(ctx), input)
+
     private const val DISCRETE_REPEAT = 17 // ~40 px per event
 
     /** A slide of [n] steps. On a TV the presses are spaced out so each step shows; elsewhere they repeat. */
@@ -69,8 +99,8 @@ object Bridge {
         if (n <= 1 || learn != null) return handle(ctx, input, discrete = true)
         lastInput = input
         if (!claims(ctx, input)) return false
-        val action = Actions.resolve(Prefs.mapping(ctx), input)
-        if (TvManager.isTarget()) {
+        val action = resolve(ctx, input)
+        if (!Prefs.carMode(ctx) && TvManager.isTarget()) {
             val code = tvKey(action)
             if (code != null) return TvManager.keys(code, n, if (action == Action.VOL_UP || action == Action.VOL_DOWN) 25L else 35L)
         }
@@ -87,8 +117,8 @@ object Bridge {
         lastInput = input
         learn?.let { learn = null; it(input); return true }
         if (!claims(ctx, input)) return false
-        val action = Actions.resolve(Prefs.mapping(ctx), input)
-        if (TvManager.isTarget()) {
+        val action = resolve(ctx, input)
+        if (!Prefs.carMode(ctx) && TvManager.isTarget()) {
             val code = when (action) {
                 Action.SCROLL_UP -> Keys.UP
                 Action.SCROLL_DOWN -> Keys.DOWN
@@ -166,6 +196,7 @@ object Bridge {
      */
     private fun local(ctx: Context, a: Action): Boolean {
         val audio = ctx.svc<AudioManager>()
+        if (Prefs.carMode(ctx)) Trace.add("car: ${a.name} -> phone media/audio (car display and amplifier cannot be controlled)")
         fun media(code: Int) {
             audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
             audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
