@@ -30,6 +30,11 @@ object Prefs {
     fun carMode(c: Context) = sp(c).getBoolean("car_mode", false)
     fun setCarMode(c: Context, enabled: Boolean) = sp(c).edit().putBoolean("car_mode", enabled).apply()
 
+    /** Optional session-specific Youtube Music loudness when car mode is on. Off until user opts in. */
+    fun youtubeGain(c: Context) = sp(c).getBoolean("yt_music_gain", false)
+    fun setYoutubeGain(c: Context, enabled: Boolean) =
+        sp(c).edit().putBoolean("yt_music_gain", enabled).apply()
+
     fun enabled(c: Context) = sp(c).getBoolean("enabled", false)
     fun setEnabled(c: Context, v: Boolean) = sp(c).edit().putBoolean("enabled", v).apply()
 
