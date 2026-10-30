@@ -273,7 +273,14 @@ class MainActivity : Activity() {
                 val ok = NativeBand.setPointer(!NativeBand.pointerOn)
                 toast(if (ok) "Air Mouse input changed" else "Pair a Bluetooth mouse host and connect the native band first")
             }, lp().margins(t = 8))
-            addView(label("Note: Wi-Fi TV Remote v2 does not carry cursor coordinates. For a real JMGO cursor, pair Bluetooth HID or install a TV-side pointer companion.", 12f, p.muted), lp().margins(t = 8))
+            addView(pill(
+                if (Prefs.tvCursor(this@MainActivity)) "Wi-Fi cursor adapter: ON (Remouse)" else "Enable Wi-Fi cursor adapter (Remouse)",
+                BtnStyle.SECONDARY
+            ) {
+                Prefs.setTvCursor(this@MainActivity, !Prefs.tvCursor(this@MainActivity))
+                rebuild()
+            }, lp().margins(t = 8))
+            addView(label("Install Remouse on the projector, enable its Accessibility service, then enable this adapter. Wi-Fi arrow-hold moves its cursor, OK clicks. Without Remouse the Wi-Fi connection controls focus only.", 12f, p.muted), lp().margins(t = 8))
         })
 
         val checkHint = label("", 14f, p.muted)
