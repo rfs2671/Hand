@@ -8,6 +8,7 @@ enum class Action(val label: String) {
     BACK("Back"), HOME("Home"), MENU("Menu"),
     PLAY_PAUSE("Play / pause"), NEXT("Next track"), PREV("Previous track"),
     VOL_UP("Volume up"), VOL_DOWN("Volume down"), MUTE("Mute"),
+    ANSWER_CALL("Answer cellular call"), END_CALL("End/reject cellular call"),
     SCROLL_UP("Scroll up"), SCROLL_DOWN("Scroll down"),
     ZOOM_IN("Zoom in (supported apps)"), ZOOM_OUT("Zoom out (supported apps)"),
     POWER("Power on / off");
