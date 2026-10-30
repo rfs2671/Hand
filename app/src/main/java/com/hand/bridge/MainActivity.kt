@@ -267,6 +267,7 @@ class MainActivity : Activity() {
             val tvNow = TvManager.connectedTv()
             val state = when {
                 !enabled -> "off"
+                Prefs.carMode(this) -> "car-media"
                 tvNow != null -> "tv:${tvNow.id}"
                 !btOn -> "bt"
                 host != null -> "on:${host.address}"
@@ -279,6 +280,7 @@ class MainActivity : Activity() {
                 fun set(color: Int, t: String, d: String) { dot.color = color; title.text = t; sub.text = d }
                 when {
                     !enabled -> set(p.muted, "Bridge is off", "Turn it on and your band controls the device you pick.")
+                    Prefs.carMode(this) -> set(p.good, "Car media mode", "Sending gestures to Pixel media controls · not BMW display input")
                     tvNow != null -> set(p.good, "Connected", "${tvNow.name} · Wi-Fi remote")
                     !btOn -> set(p.warn, "Bluetooth is off", "Hand Bridge needs Bluetooth to reach your devices.")
                     host != null -> {
@@ -291,7 +293,7 @@ class MainActivity : Activity() {
                 chips.removeAllViews()
                 chips.addView(bandChip())
                 val cfgTv = TvManager.tv
-                if (enabled && cfgTv != null && tvNow == null) {
+                if (enabled && !Prefs.carMode(this) && cfgTv != null && tvNow == null) {
                     when (TvManager.state) {
                         TvState.CONNECTING -> chips.addView(chip("Connecting to ${cfgTv.name}…", p.accent, dot = true), lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(l = 8))
                         TvState.UNREACHABLE -> chips.addView(chip("${cfgTv.name} not reachable", p.warn, dot = true), lp(LinearLayout.LayoutParams.WRAP_CONTENT).margins(l = 8))
@@ -317,13 +319,12 @@ class MainActivity : Activity() {
                 else -> "Live. Gestures appear here as they arrive."
             }
             checkRows.removeAllViews()
-            val map = Prefs.mapping(this)
             events.forEachIndexed { n, e ->
                 if (n > 0) checkRows.addView(divider())
                 val key = "EVT_" + e.gesture.trim().uppercase().replace(' ', '_').replace('-', '_')
                 val name = if (e.gesture == "test") "Test from Air Gestures"
                     else Actions.pretty(key) + if (e.steps != 0) "  ${if (e.steps > 0) "+" else ""}${e.steps}" else ""
-                val act = Actions.resolve(map, if (e.steps != 0) Actions.stepKey(key, e.steps) else key)
+                val act = Bridge.resolve(this, if (e.steps != 0) Actions.stepKey(key, e.steps) else key)
                 val (what, color) = when {
                     e.note != null -> "Ignored: ${e.note}" to p.warn
                     e.gesture == "test" -> "Received ✓" to p.good
@@ -364,7 +365,7 @@ class MainActivity : Activity() {
         Step(AirGestures.received > 0, "Send gestures from Air Gestures", "In Air Gestures set each gesture's action to “Send to automation”", Glyph.Shape.GESTURE) {
             packageManager.getLaunchIntentForPackage(AirGestures.PKG)?.let { startActivity(it) } ?: toast("Air Gestures isn't installed")
         },
-        Step(Prefs.devices(this).isNotEmpty() || Prefs.tvs(this).isNotEmpty(), "Add a device", "Projector, TV, PC or your car", Glyph.Shape.DEVICES) { showTab(Tab.DEVICES) },
+        Step(Prefs.devices(this).isNotEmpty() || Prefs.tvs(this).isNotEmpty() || Prefs.carMode(this), "Choose output", "Projector, TV, PC or phone media for Android Auto", Glyph.Shape.DEVICES) { showTab(Tab.DEVICES) },
         Step(a11yOn(), "Phone controls (optional)", "Back and Home on this phone, plus keyboard-style input", Glyph.Shape.PHONE) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
@@ -417,11 +418,39 @@ class MainActivity : Activity() {
     private fun modeHelp(m: Mode) = when (m) {
         Mode.MOUSE -> "Gestures move a pointer and click. Best for PCs, XREAL Beam Pro and smart TVs."
         Mode.REMOTE -> "Arrows and OK, like the original remote. Best for Android TV and JMGO projectors."
-        Mode.LOCAL -> "Nothing is sent to this device. Use it for your car: gestures control music and volume, and Android Auto follows."
+        Mode.LOCAL -> "Controls supported functions on this Pixel, not the paired device. Android Auto requires the separate Car media mode above; BMW screen and speaker volume cannot be driven by HID."
     }
 
     private fun devicesPage(): () -> Unit {
         val hid = Bridge.hid(this)
+        page.addView(card {
+            addView(label("Car / Android Auto media", 17f, bold = true))
+            addView(label("No Bluetooth mouse pairing with the BMW is needed. Media gestures go to the active music player on this Pixel; Android Auto may play that audio through the car.", 13.5f, p.muted), lp().margins(t = 5, b = 10))
+            addView(toggleRow("Use Car media mode", "Prioritize the Pixel's music app even if a projector or Bluetooth HID host is connected.", Prefs.carMode(this@MainActivity)) {
+                Prefs.setCarMode(this@MainActivity, it)
+                rebuild()
+            })
+            addView(label("Band preset: index tap = play/pause; thumb left/right = previous/next; index slider left/right = previous/next; dial = phone music volume.", 13f, p.muted), lp().margins(t = 8))
+            addView(label("Important: The BMW display's cursor, menus and physical speaker volume are not controlled by Android Auto media commands.", 12.5f, p.warn), lp().margins(t = 8))
+            addView(hbox {
+                addView(pill("Test play/pause", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity)) {
+                        toast("Turn on Car media mode first")
+                    } else {
+                        val ok = Bridge.perform(this@MainActivity, Action.PLAY_PAUSE)
+                        toast(if (ok) "Sent play/pause to Pixel media app. Check the player." else "Media command not sent")
+                    }
+                }, lp(0, weight = 1f).margins(r = 8))
+                addView(pill("Test next", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity)) {
+                        toast("Turn on Car media mode first")
+                    } else {
+                        val ok = Bridge.perform(this@MainActivity, Action.NEXT)
+                        toast(if (ok) "Sent next track to Pixel media app. Check the player." else "Media command not sent")
+                    }
+                }, lp(0, weight = 1f))
+            }, lp().margins(t = 10))
+        })
         page.addView(pill("Add a device", BtnStyle.PRIMARY, Glyph.Shape.PLUS) { addDevice() }, lp().margins(b = 14))
         val devs = Prefs.devices(this)
         val tvs = Prefs.tvs(this)
@@ -445,15 +474,12 @@ class MainActivity : Activity() {
                 setPadding(Ui.dp(24), Ui.dp(32), Ui.dp(24), Ui.dp(32))
                 addView(Glyph(context, Glyph.Shape.DEVICES, p.muted, 48), lp(Ui.dp(48), Ui.dp(48)))
                 addView(label("No devices yet", 18f, bold = true).apply { gravity = Gravity.CENTER }, lp().margins(t = 14))
-                addView(label("Add your projector, TV, PC or XR glasses host. Your car can go here too.", 14f, p.muted)
+                addView(label("Add your projector, TV, PC or XR glasses host. Car media uses the separate mode above; do not pair the car as a mouse.", 14f, p.muted)
                     .apply { gravity = Gravity.CENTER }, lp().margins(t = 6))
             })
         }
         devs.forEach { page.addView(deviceCard(it, hid.host?.address == it.address)) }
-        page.addView(card {
-            addView(listRow("Using it in the car", "Add the car's Bluetooth and choose Phone. When the car connects, your band controls music and volume.",
-                Glyph.Shape.CAR, p.accent))
-        })
+
         fun sig() = "${hid.host?.address}|${hid.registered}|${hid.lastError}|${TvManager.state}|${TvManager.connected}|${Prefs.devices(this).size}"
         val sig = sig()
         return { if (sig() != sig) rebuild() }
@@ -1036,6 +1062,30 @@ class MainActivity : Activity() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun remotePage(): () -> Unit {
+        if (Prefs.carMode(this)) {
+            page.addView(card {
+                addView(label("Car media controls", 18f, bold = true))
+                addView(label("These buttons control your Pixel's active music app, not the BMW's display. Start playing media on the phone or in Android Auto first.", 14f, p.muted), lp().margins(t = 6, b = 12))
+                addView(hbox {
+                    addView(pill("Previous", BtnStyle.SECONDARY) {
+                        Bridge.perform(this@MainActivity, Action.PREV)
+                    }, lp(0, weight = 1f).margins(r = 6))
+                    addView(pill("Play / Pause", BtnStyle.PRIMARY) {
+                        Bridge.perform(this@MainActivity, Action.PLAY_PAUSE)
+                    }, lp(0, weight = 1f).margins(r = 6))
+                    addView(pill("Next", BtnStyle.SECONDARY) {
+                        Bridge.perform(this@MainActivity, Action.NEXT)
+                    }, lp(0, weight = 1f))
+                })
+                addView(label("Phone music-stream volume (may not change the BMW's speaker level)", 12.5f, p.muted), lp().margins(t = 14, b = 6))
+                addView(hbox {
+                    addView(pill("Phone volume −", BtnStyle.SECONDARY) { Bridge.perform(this@MainActivity, Action.VOL_DOWN) }, lp(0, weight = 1f).margins(r = 8))
+                    addView(pill("Phone volume +", BtnStyle.SECONDARY) { Bridge.perform(this@MainActivity, Action.VOL_UP) }, lp(0, weight = 1f))
+                })
+                addView(label("Mouse, D-pad, cursor, and car hardware volume are not available over standard Android Auto.", 12.5f, p.warn), lp().margins(t = 12))
+            })
+            return { if (!Prefs.carMode(this)) rebuild() }
+        }
         val hid = Bridge.hid(this)
         val host = hid.host
         val mode = Bridge.activeMode(this)
