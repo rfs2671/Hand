@@ -52,6 +52,7 @@ class MainActivity : Activity() {
         REMOTE("Remote", Glyph.Shape.REMOTE)
     }
 
+    private val reqNativeKey = 9132
     private var tab = Tab.HOME
     private lateinit var scroll: ScrollView
     private lateinit var page: LinearLayout
@@ -240,6 +241,41 @@ class MainActivity : Activity() {
         val setupBox = vbox {}
         page.addView(setupBox)
 
+        // Direct Meta Neural Band preview: reuse the Air Gestures owner's key,
+        // but run the Lumen Rust band engine locally (no broadcast hop).
+        val nativeStatus = label("", 13f, p.muted)
+        page.addView(card {
+            addView(label("Direct band input (experimental)", 17f, bold = true))
+            addView(label("Requires an Air Gestures owner-key export. Turn Air Gestures off before connecting here; one app at a time can hold the band.", 13f, p.muted), lp().margins(t = 5, b = 10))
+            addView(nativeStatus, lp().margins(b = 10))
+            addView(pill("Import band key file", BtnStyle.SECONDARY) {
+                val select = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                }
+                startActivityForResult(select, reqNativeKey)
+            })
+            addView(pill(
+                if (NativeBand.enabled(this@MainActivity)) "Use Air Gestures instead" else "Enable direct band",
+                BtnStyle.SECONDARY
+            ) {
+                val on = !NativeBand.enabled(this@MainActivity)
+                if (on && !NativeBand.identityPresent(this@MainActivity)) {
+                    toast("Import the Air Gestures band key first.")
+                } else {
+                    if (on) AirGestures.announce(this@MainActivity, false)
+                    NativeBand.setEnabled(this@MainActivity, on)
+                    if (on) BridgeService.start(this@MainActivity)
+                    rebuild()
+                }
+            }, lp().margins(t = 8))
+            addView(pill("Toggle native Air Mouse (Bluetooth HID)", BtnStyle.SECONDARY) {
+                val ok = NativeBand.setPointer(!NativeBand.pointerOn)
+                toast(if (ok) "Air Mouse input changed" else "Pair a Bluetooth mouse host and connect the native band first")
+            }, lp().margins(t = 8))
+            addView(label("Note: Wi-Fi TV Remote v2 does not carry cursor coordinates. For a real JMGO cursor, pair Bluetooth HID or install a TV-side pointer companion.", 12f, p.muted), lp().margins(t = 8))
+        })
+
         val checkHint = label("", 14f, p.muted)
         val checkRows = vbox {}
         page.addView(card {
@@ -310,6 +346,7 @@ class MainActivity : Activity() {
                 setupBox.removeAllViews()
                 setupCard()?.let { setupBox.addView(it) }
             }
+            nativeStatus.text = "Native: ${NativeBand.phase} · Last ${NativeBand.lastEvent} · Mouse ${if (NativeBand.pointerOn) "ON" else "OFF"}${NativeBand.error?.let { " · $it" } ?: ""}"
             val events = AirGestures.events().take(6)
             checkHint.text = when {
                 events.isEmpty() -> AirGestures.statusText(this)
@@ -1324,6 +1361,18 @@ class MainActivity : Activity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == reqNativeKey) {
+            if (resultCode == RESULT_OK && data?.data != null) {
+                val message = runCatching {
+                    val bytes = contentResolver.openInputStream(data.data!!)?.use { it.readBytes() }
+                        ?: error("Could not open file")
+                    NativeBand.importKey(this, bytes)
+                }.getOrElse { "Import failed: ${it.message}" }
+                toast(message)
+                rebuild()
+            }
+            return
+        }
         if (requestCode == REQ_ASSOC && resultCode == RESULT_OK) {
             syncAssociations()
             showTab(Tab.DEVICES)
