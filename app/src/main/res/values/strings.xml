@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Hand Bridge</string>
+    <string name="app_name">Hand Bridge Car Preview</string>
     <string name="a11y_desc">Reads key presses from your gesture band or air-gesture app and forwards them to the Bluetooth device you are controlling.</string>
 </resources>
