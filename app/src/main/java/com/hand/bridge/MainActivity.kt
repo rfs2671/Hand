@@ -1062,7 +1062,23 @@ class MainActivity : Activity() {
                         MotionEvent.ACTION_MOVE -> {
                             val dx = ((e.x - lx) * 0.6f).toInt()
                             val dy = ((e.y - ly) * 0.6f).toInt()
-                            if (dx != 0 || dy != 0) { Bridge.hid(context).move(dx, dy); lx = e.x; ly = e.y; moved = true }
+                            if (dx != 0 || dy != 0) {
+                                if (TvManager.isTarget()) {
+                                    val horizontal = kotlin.math.abs(dx) >= kotlin.math.abs(dy)
+                                    val delta = if (horizontal) dx else dy
+                                    if (kotlin.math.abs(delta) >= Ui.dp(15)) {
+                                        val code = if (horizontal) {
+                                            if (delta > 0) com.hand.bridge.atv.Keys.RIGHT else com.hand.bridge.atv.Keys.LEFT
+                                        } else if (delta > 0) com.hand.bridge.atv.Keys.DOWN else com.hand.bridge.atv.Keys.UP
+                                        val steps = (kotlin.math.abs(delta) / Ui.dp(15)).coerceIn(1, 6)
+                                        moved = TvManager.continuousKey(code, steps) || moved
+                                        lx = e.x; ly = e.y
+                                    }
+                                } else {
+                                    moved = Bridge.hid(context).move(dx, dy) || moved
+                                    lx = e.x; ly = e.y
+                                }
+                            }
                         }
                         MotionEvent.ACTION_UP -> if (!moved) { v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP); Bridge.perform(context, Action.SELECT) }
                     }
