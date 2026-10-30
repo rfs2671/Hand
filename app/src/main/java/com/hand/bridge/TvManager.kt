@@ -102,6 +102,37 @@ object TvManager {
 
 
     /**
+     * Wi-Fi cursor mode for the projector-side Remouse accessibility service.
+     *
+     * Remouse needs a real DPAD ACTION_DOWN followed by ACTION_UP so it can
+     * continuously accelerate the cursor while held. Start on the FIRST motion
+     * sample (do not wait for a second batch or send repeated short key taps).
+     * New motion of the same direction refreshes the release deadline. Direction
+     * changes end the previous key before starting the next one.
+     *
+     * The Android TV v2 connection only knows DPAD keys; the projector itself
+     * must run an enabled key-intercepting cursor service to move a pointer.
+     */
+    @Synchronized fun cursorDirection(code: Int, releaseAfterMs: Long = 180L): Boolean {
+        if (code != Keys.UP && code != Keys.DOWN &&
+            code != Keys.LEFT && code != Keys.RIGHT) return false
+        if (heldKey != code) {
+            releaseHold()
+            // No queued stale shorts: one key down, repeated updates are
+            // deliberately coalesced until key up or direction change.
+            if (remote?.key(code, Remote.DIR_START_LONG) != true) return false
+            heldKey = code
+        }
+        lastSliderCode = null
+        lastSliderAt = 0L
+        endHold?.let { main.removeCallbacks(it) }
+        val release = Runnable { releaseHold() }
+        endHold = release
+        main.postDelayed(release, releaseAfterMs.coerceIn(70L, 1000L))
+        return true
+    }
+
+    /**
      * Physical on-screen directional button hold. The touch UI sends a short key
      * immediately, then begins a long key only after the finger stays down.
      * Always release explicitly on touch-up/cancel or when the view is removed.
