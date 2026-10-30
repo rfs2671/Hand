@@ -55,12 +55,7 @@ object Bridge {
         if (action == Action.POWER) return TvManager.power(ctx)
         if (TvManager.isTarget()) {
             if (repeat > 0 && repeat % 3 != 0) return true // a held key repeats ~30x/s; the TV needs fewer
-            val adjusted = if (Prefs.tvCursor(ctx)) when (action) {
-                Action.SCROLL_UP -> Action.UP
-                Action.SCROLL_DOWN -> Action.DOWN
-                else -> action
-            } else action
-            return viaTv(adjusted)
+            return viaTv(action)
         }
         val mode = activeMode(ctx)
         return if (mode == Mode.LOCAL) local(ctx, action)
@@ -76,12 +71,7 @@ object Bridge {
         if (!claims(ctx, input)) return false
         val action = Actions.resolve(Prefs.mapping(ctx), input)
         if (TvManager.isTarget()) {
-            val adjusted = if (Prefs.tvCursor(ctx)) when (action) {
-                Action.SCROLL_UP -> Action.UP
-                Action.SCROLL_DOWN -> Action.DOWN
-                else -> action
-            } else action
-            val code = tvKey(adjusted)
+            val code = tvKey(action)
             if (code != null) return TvManager.keys(code, n, if (action == Action.VOL_UP || action == Action.VOL_DOWN) 25L else 35L)
         }
         var any = false
@@ -104,11 +94,7 @@ object Bridge {
                 Action.SCROLL_DOWN -> Keys.DOWN
                 else -> tvKey(action)
             } ?: return false
-            return if (Prefs.tvCursor(ctx) && code in setOf(Keys.UP, Keys.DOWN, Keys.LEFT, Keys.RIGHT))
-                // Air Gestures sliders batch at roughly 250ms, so keep the key
-                // down through a possible next batch instead of tapping each time.
-                TvManager.cursorDirection(code, 360L)
-            else TvManager.continuousKey(code, steps)
+            return TvManager.continuousKey(code, steps)
         }
         return handleSteps(ctx, input, steps)
     }
