@@ -428,9 +428,39 @@ class MainActivity : Activity() {
             addView(label("No Bluetooth mouse pairing with the BMW is needed. Media gestures go to the active music player on this Pixel; Android Auto may play that audio through the car.", 13.5f, p.muted), lp().margins(t = 5, b = 10))
             addView(toggleRow("Use Car media mode", "Prioritize the Pixel's music app even if a projector or Bluetooth HID host is connected.", Prefs.carMode(this@MainActivity)) {
                 Prefs.setCarMode(this@MainActivity, it)
+                YoutubeMusicGain.refresh(this@MainActivity)
                 rebuild()
             })
-            addView(label("Band: index tap = play/pause; thumb left/right = tracks; middle tap = answer call; index hold = end/reject call; dial = phone music volume.", 13f, p.muted), lp().margins(t = 8))
+            addView(label("Band: index tap = play/pause; thumb left/right = tracks; middle tap = answer call; index hold = end/reject call; dial = selected music volume method.", 13f, p.muted), lp().margins(t = 8))
+            addView(toggleRow("YouTube Music audio gain (no ADB) · experimental",
+                "Try changing the music signal before it reaches Android Auto. Does NOT change the BMW master volume. Only works when YouTube Music announces an audio session.",
+                Prefs.youtubeGain(this@MainActivity)) { on ->
+                Prefs.setYoutubeGain(this@MainActivity, on)
+                YoutubeMusicGain.refresh(this@MainActivity)
+                if (on) BridgeService.start(this@MainActivity)
+                rebuild()
+            }, lp().margins(t = 10))
+            val ytGainStatus = label(YoutubeMusicGain.status(), 12.5f, p.muted)
+            addView(ytGainStatus, lp().margins(t = 7))
+            addView(hbox {
+                addView(pill("Test music much quieter", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity) || !Prefs.youtubeGain(this@MainActivity)) {
+                        toast("Enable Car mode and YouTube Music audio gain first")
+                    } else {
+                        YoutubeMusicGain.setGainDb(-18f)
+                        ytGainStatus.text = YoutubeMusicGain.status()
+                        toast(YoutubeMusicGain.lastStatus)
+                    }
+                }, lp(0, weight = 1f).margins(r = 8))
+                addView(pill("Restore music level", BtnStyle.SECONDARY) {
+                    if (Prefs.youtubeGain(this@MainActivity)) {
+                        YoutubeMusicGain.setGainDb(0f)
+                        ytGainStatus.text = YoutubeMusicGain.status()
+                        toast(YoutubeMusicGain.lastStatus)
+                    }
+                }, lp(0, weight = 1f))
+            }, lp().margins(t = 8))
+            addView(label("If no session is detected, start YouTube Music again while HandBridge is on. No command will be sent to BMW or the Pixel volume as a fake fallback.", 12.5f, p.muted), lp().margins(t = 7))
             addView(label("Calls are regular cellular calls only; an active ringing call is needed to test Answer. End rejects a ringing call or hangs up an active call.", 12.5f, p.muted), lp().margins(t = 8))
             addView(if (PhoneCalls.permitted(this@MainActivity)) {
                 label("Phone call permission granted", 13f, p.good)
@@ -460,16 +490,16 @@ class MainActivity : Activity() {
             addView(hbox {
                 addView(pill("Test phone volume −", BtnStyle.SECONDARY) {
                     val changed = Bridge.perform(this@MainActivity, Action.VOL_DOWN)
-                    carVolumeResult.text = PhoneAudio.lastStatus
-                    toast(if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
+                    carVolumeResult.text = if (Prefs.youtubeGain(this@MainActivity)) YoutubeMusicGain.status() else PhoneAudio.lastStatus
+                    toast(if (Prefs.youtubeGain(this@MainActivity)) YoutubeMusicGain.lastStatus else if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
                 }, lp(0, weight = 1f).margins(r = 8))
                 addView(pill("Test phone volume +", BtnStyle.SECONDARY) {
                     val changed = Bridge.perform(this@MainActivity, Action.VOL_UP)
-                    carVolumeResult.text = PhoneAudio.lastStatus
-                    toast(if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
+                    carVolumeResult.text = if (Prefs.youtubeGain(this@MainActivity)) YoutubeMusicGain.status() else PhoneAudio.lastStatus
+                    toast(if (Prefs.youtubeGain(this@MainActivity)) YoutubeMusicGain.lastStatus else if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
                 }, lp(0, weight = 1f))
             }, lp().margins(t = 8))
-            addView(label("Important: Android Auto does not expose BMW amplifier volume to this app. Phone volume changes do not prove that the car became louder/quieter.", 12.5f, p.warn), lp().margins(t = 8))
+            addView(label("Android Auto does not expose BMW amplifier volume. A DSP parameter change alone cannot prove that the BMW's output changed.", 12.5f, p.warn), lp().margins(t = 8))
             addView(hbox {
                 addView(pill("Test play/pause", BtnStyle.SECONDARY) {
                     if (!Prefs.carMode(this@MainActivity)) {
@@ -520,7 +550,10 @@ class MainActivity : Activity() {
 
         fun sig() = "${hid.host?.address}|${hid.registered}|${hid.lastError}|${TvManager.state}|${TvManager.connected}|${Prefs.devices(this).size}"
         val sig = sig()
-        return { if (sig() != sig) rebuild() }
+        return {
+            ytGainStatus.text = YoutubeMusicGain.status()
+            if (sig() != sig) rebuild()
+        }
     }
 
     private fun deviceCard(d: Dev, connected: Boolean) = card {
@@ -1130,20 +1163,27 @@ class MainActivity : Activity() {
                         }
                     }, lp(0, weight = 1f))
                 })
-                addView(label("Phone music-stream volume (may not change BMW speakers)", 12.5f, p.muted), lp().margins(t = 14, b = 6))
+                addView(label(if (Prefs.youtubeGain(this@MainActivity))
+                    "YouTube Music DSP gain (experimental; BMW master volume unchanged)"
+                    else "Phone music volume (may not change BMW speakers)",
+                    12.5f, p.muted), lp().margins(t = 14, b = 6))
+                val gainSummary = label(YoutubeMusicGain.status(), 12.5f, p.muted)
+                if (Prefs.youtubeGain(this@MainActivity)) addView(gainSummary, lp().margins(t = 6))
                 addView(hbox {
                     addView(pill("Phone volume −", BtnStyle.SECONDARY) {
                         Bridge.perform(this@MainActivity, Action.VOL_DOWN)
-                        toast(PhoneAudio.lastStatus)
+                        toast(if (Prefs.youtubeGain(this@MainActivity)) YoutubeMusicGain.lastStatus else PhoneAudio.lastStatus)
                     }, lp(0, weight = 1f).margins(r = 8))
                     addView(pill("Phone volume +", BtnStyle.SECONDARY) {
                         Bridge.perform(this@MainActivity, Action.VOL_UP)
-                        toast(PhoneAudio.lastStatus)
+                        toast(if (Prefs.youtubeGain(this@MainActivity)) YoutubeMusicGain.lastStatus else PhoneAudio.lastStatus)
                     }, lp(0, weight = 1f))
                 })
-                addView(label("Mouse, D-pad, cursor, and car hardware volume are not available over standard Android Auto.", 12.5f, p.warn), lp().margins(t = 12))
+                addView(label("BMW master volume is not available over standard Android Auto. DSP only changes YouTube Music digital loudness if the session is exposed.", 12.5f, p.warn), lp().margins(t = 12))
             })
-            return { if (!Prefs.carMode(this)) rebuild() }
+            return {
+                if (!Prefs.carMode(this)) rebuild()
+            }
         }
         val hid = Bridge.hid(this)
         val host = hid.host
