@@ -1101,6 +1101,38 @@ class MainActivity : Activity() {
         // D-pad
         fun key(a: Action, icon: Glyph.Shape, text: String? = null, accent: Boolean = false) =
             iconKey(icon, text, accent) { Bridge.perform(this, a, discrete = true) }
+        fun arrow(a: Action, icon: Glyph.Shape): View {
+            val holder = key(a, icon)
+            val surface = (holder as LinearLayout).getChildAt(0)
+            val code = when (a) {
+                Action.UP -> com.hand.bridge.atv.Keys.UP
+                Action.DOWN -> com.hand.bridge.atv.Keys.DOWN
+                Action.LEFT -> com.hand.bridge.atv.Keys.LEFT
+                Action.RIGHT -> com.hand.bridge.atv.Keys.RIGHT
+                else -> return holder
+            }
+            var timer: Runnable? = null
+            surface.setOnTouchListener { v, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        if (!TvManager.isTarget()) return@setOnTouchListener false
+                        v.isPressed = true
+                        Bridge.perform(this@MainActivity, a, discrete = true)
+                        timer = Runnable { TvManager.beginRemoteHold(code) }.also { ui.postDelayed(it, 200L) }
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        timer?.let { ui.removeCallbacks(it) }
+                        timer = null
+                        TvManager.endRemoteHold(code)
+                        v.isPressed = false
+                        true
+                    }
+                    else -> TvManager.isTarget()
+                }
+            }
+            return holder
+        }
         fun spacer() = View(this)
         fun row(vararg v: View) = hbox {
             gravity = Gravity.CENTER
@@ -1108,9 +1140,9 @@ class MainActivity : Activity() {
         }
         page.addView(card {
             gravity = Gravity.CENTER_HORIZONTAL
-            addView(row(spacer(), key(Action.UP, Glyph.Shape.UP), spacer()))
-            addView(row(key(Action.LEFT, Glyph.Shape.LEFT), key(Action.SELECT, Glyph.Shape.CHECK, accent = true), key(Action.RIGHT, Glyph.Shape.RIGHT)), lp().margins(t = 8, b = 8))
-            addView(row(spacer(), key(Action.DOWN, Glyph.Shape.DOWN), spacer()))
+            addView(row(spacer(), arrow(Action.UP, Glyph.Shape.UP), spacer()))
+            addView(row(arrow(Action.LEFT, Glyph.Shape.LEFT), key(Action.SELECT, Glyph.Shape.CHECK, accent = true), arrow(Action.RIGHT, Glyph.Shape.RIGHT)), lp().margins(t = 8, b = 8))
+            addView(row(spacer(), arrow(Action.DOWN, Glyph.Shape.DOWN), spacer()))
             addView(divider(), lp(h = Ui.dp(1)).margins(t = 16, b = 16))
             addView(row(key(Action.BACK, Glyph.Shape.BACK, "Back"), key(Action.HOME, Glyph.Shape.HOME, "Home"), key(Action.MENU, Glyph.Shape.MENU, "Menu")))
         })
