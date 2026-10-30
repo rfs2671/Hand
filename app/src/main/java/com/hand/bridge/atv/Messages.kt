@@ -123,6 +123,8 @@ object Keys {
     const val PREVIOUS = 88
     const val PAGE_UP = 92
     const val PAGE_DOWN = 93
+    const val ZOOM_IN = 168
+    const val ZOOM_OUT = 169
     const val VOLUME_MUTE = 164
     const val INFO = 165
     const val SLEEP = 223
