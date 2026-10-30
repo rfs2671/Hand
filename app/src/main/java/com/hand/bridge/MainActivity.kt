@@ -430,7 +430,7 @@ class MainActivity : Activity() {
                 Prefs.setCarMode(this@MainActivity, it)
                 rebuild()
             })
-            addView(label("Band: index tap = play/pause; thumb left/right = tracks; middle tap = answer call; index hold = end/reject call; dial = phone music volume.", 13f, p.muted), lp().margins(t = 8))
+            addView(label("Band: index tap = play/pause; thumb left/right = tracks; middle tap = answer call; index hold = end/reject call; dial = BMW remote-route test.", 13f, p.muted), lp().margins(t = 8))
             addView(label("Calls are regular cellular calls only; an active ringing call is needed to test Answer. End rejects a ringing call or hangs up an active call.", 12.5f, p.muted), lp().margins(t = 8))
             addView(if (PhoneCalls.permitted(this@MainActivity)) {
                 label("Phone call permission granted", 13f, p.good)
@@ -455,13 +455,13 @@ class MainActivity : Activity() {
                     }
                 }, lp(0, weight = 1f))
             }, lp().margins(t = 10))
-            val carVolumeResult = label(PhoneAudio.lastStatus + " · " + PhoneAudio.level(this@MainActivity), 12.5f, p.muted)
+            val carVolumeResult = label(if (Prefs.remoteCarVolume(this@MainActivity)) CarVolumeRoute.describe(this@MainActivity) else PhoneAudio.lastStatus + " · " + PhoneAudio.level(this@MainActivity), 12.5f, p.muted)
             addView(carVolumeResult, lp().margins(t = 10))
             addView(hbox {
                 addView(pill("Test phone volume −", BtnStyle.SECONDARY) {
                     val changed = Bridge.perform(this@MainActivity, Action.VOL_DOWN)
-                    carVolumeResult.text = PhoneAudio.lastStatus
-                    toast(if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
+                    carVolumeResult.text = if (Prefs.remoteCarVolume(this@MainActivity)) CarVolumeRoute.lastResult else PhoneAudio.lastStatus
+                    toast(if (Prefs.remoteCarVolume(this@MainActivity)) CarVolumeRoute.lastResult else if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
                 }, lp(0, weight = 1f).margins(r = 8))
                 addView(pill("Test phone volume +", BtnStyle.SECONDARY) {
                     val changed = Bridge.perform(this@MainActivity, Action.VOL_UP)
@@ -469,7 +469,28 @@ class MainActivity : Activity() {
                     toast(if (changed) PhoneAudio.lastStatus else "No phone volume change: " + PhoneAudio.lastStatus)
                 }, lp(0, weight = 1f))
             }, lp().margins(t = 8))
-            addView(label("Important: Android Auto does not expose BMW amplifier volume to this app. Phone volume changes do not prove that the car became louder/quieter.", 12.5f, p.warn), lp().margins(t = 8))
+            addView(label("2026 BMW — remote audio-route volume probe", 15f, bold = true), lp().margins(t = 12))
+            addView(toggleRow("Try actual BMW route volume (no ADB)",
+                "Only sends to an exposed remote BMW audio route. If Android Auto doesn't publish one, gestures won't change Pixel volume.",
+                Prefs.remoteCarVolume(this@MainActivity)) {
+                Prefs.setRemoteCarVolume(this@MainActivity, it)
+                rebuild()
+            }, lp().margins(t = 6))
+            val remoteRouteStatus = label(CarVolumeRoute.describe(this@MainActivity), 12.5f, p.muted)
+            addView(remoteRouteStatus, lp().margins(t = 8))
+            addView(hbox {
+                addView(pill("Test BMW volume −", BtnStyle.SECONDARY) {
+                    if (Prefs.carMode(this@MainActivity)) CarVolumeRoute.adjust(this@MainActivity, -1)
+                    remoteRouteStatus.text = CarVolumeRoute.describe(this@MainActivity) + "\\n" + CarVolumeRoute.lastResult
+                    toast(CarVolumeRoute.lastResult)
+                }, lp(0, weight = 1f).margins(r = 8))
+                addView(pill("Test BMW volume +", BtnStyle.SECONDARY) {
+                    if (Prefs.carMode(this@MainActivity)) CarVolumeRoute.adjust(this@MainActivity, +1)
+                    remoteRouteStatus.text = CarVolumeRoute.describe(this@MainActivity) + "\\n" + CarVolumeRoute.lastResult
+                    toast(CarVolumeRoute.lastResult)
+                }, lp(0, weight = 1f))
+            }, lp().margins(t = 8))
+            addView(label("A sent request isn't proof the vehicle accepted it. Confirm whether the BMW's own volume indicator changes.", 12.5f, p.warn), lp().margins(t = 8))
             addView(hbox {
                 addView(pill("Test play/pause", BtnStyle.SECONDARY) {
                     if (!Prefs.carMode(this@MainActivity)) {
@@ -1130,18 +1151,21 @@ class MainActivity : Activity() {
                         }
                     }, lp(0, weight = 1f))
                 })
-                addView(label("Phone music-stream volume (may not change BMW speakers)", 12.5f, p.muted), lp().margins(t = 14, b = 6))
+                addView(label(if (Prefs.remoteCarVolume(this@MainActivity))
+                    "BMW remote-route volume test — no Pixel fallback"
+                    else "Phone music-stream volume (not BMW speakers)", 12.5f, p.muted), lp().margins(t = 14, b = 6))
+                if (Prefs.remoteCarVolume(this@MainActivity)) addView(label(CarVolumeRoute.describe(this@MainActivity), 12.5f, p.muted), lp().margins(t = 6))
                 addView(hbox {
                     addView(pill("Phone volume −", BtnStyle.SECONDARY) {
                         Bridge.perform(this@MainActivity, Action.VOL_DOWN)
-                        toast(PhoneAudio.lastStatus)
+                        toast(if (Prefs.remoteCarVolume(this@MainActivity)) CarVolumeRoute.lastResult else PhoneAudio.lastStatus)
                     }, lp(0, weight = 1f).margins(r = 8))
                     addView(pill("Phone volume +", BtnStyle.SECONDARY) {
                         Bridge.perform(this@MainActivity, Action.VOL_UP)
-                        toast(PhoneAudio.lastStatus)
+                        toast(if (Prefs.remoteCarVolume(this@MainActivity)) CarVolumeRoute.lastResult else PhoneAudio.lastStatus)
                     }, lp(0, weight = 1f))
                 })
-                addView(label("Mouse, D-pad, cursor, and car hardware volume are not available over standard Android Auto.", 12.5f, p.warn), lp().margins(t = 12))
+                addView(label("This probes Android's external volume route. It can't adjust the BMW if Android Auto exposes only a local or fixed route.", 12.5f, p.warn), lp().margins(t = 12))
             })
             return { if (!Prefs.carMode(this)) rebuild() }
         }
