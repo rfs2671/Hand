@@ -83,7 +83,7 @@ object NativeBand {
         // Default: avoid the 400ms tap-vs-double wait when navigating.
         // On the Test tab, enable doubles so all native gestures can be diagnosed.
         val active = diagnostic || name !in setOf("index_double", "middle_double")
-        "$" + name + "=" + if (active) "hb.$" + name else ""
+        name + "=" + if (active) "hb." + name else ""
     } + ";hand=band"
 
     /** Enables double-tap recognition during testing; restore low-latency mapping afterward. */
@@ -94,6 +94,10 @@ object NativeBand {
         changed()
     }
     fun diagnosticEnabled() = diagnostic
+    fun stopPointerTest() {
+        if (pointerTestOnly) setPointer(false)
+    }
+    fun pointerTesting() = pointerOn && pointerTestOnly
     fun clearPointerTests() {
         pointerMotionRecords = 0
         pointerPresses = 0
