@@ -8,12 +8,12 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.hand.bridge"
+        applicationId = "com.hand.bridge.nativepreview"
         minSdk = 31
         targetSdk = 34
         // CI run number, so every published APK installs as an update over the previous one.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "0.2.0"
+        versionName = "0.3.0-native-preview"
     }
 
     // One permanent key (from CI secrets) keeps updates installable. Without it the build falls
