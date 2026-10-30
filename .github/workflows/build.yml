@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main, "claude/**", car-calls-volume-preview]
   pull_request:
   workflow_dispatch:
 
@@ -50,7 +50,7 @@ jobs:
           path: HandBridge.apk
       # Rolling pre-release so the APK can be downloaded straight onto the phone.
       - name: Publish rolling "latest" release
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref != 'refs/heads/car-calls-volume-preview'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-apk
@@ -58,3 +58,18 @@ jobs:
           prerelease: true
           files: HandBridge.apk
           body: Auto-built from the latest push. Install HandBridge.apk on your Android phone (allow "install unknown apps").
+
+      - name: Publish separate Car Preview APK
+        if: github.ref == 'refs/heads/car-calls-volume-preview' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: car-preview-apk
+          name: Car Media and Cellular Calls Preview
+          prerelease: true
+          files: HandBridge.apk
+          body: |
+            Separate package com.hand.bridge.carpreview. Does not overwrite your working HandBridge.
+            Turn off original HandBridge bridge while testing, then use this app's
+            Devices > Car mode. Grant the Phone calls permission for answer/end.
+            Android Auto does not expose BMW amplifier volume to normal phone apps.
+            Build-tested only; test all call gestures safely while parked.
