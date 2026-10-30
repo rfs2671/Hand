@@ -1053,7 +1053,7 @@ class MainActivity : Activity() {
         page.addView(card {
             val pad = FrameLayout(context).apply {
                 background = Ui.rounded(p.surface2, 18)
-                addView(label("Drag to move  ·  tap to click", 13.5f, p.muted), FrameLayout.LayoutParams(
+                addView(label(if (TvManager.isTarget()) "Swipe to navigate on TV · tap to select (no free cursor)" else "Drag to move pointer · tap to click", 13.5f, p.muted), FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
                 var lx = 0f; var ly = 0f; var moved = false
                 setOnTouchListener { v, e ->
@@ -1080,7 +1080,13 @@ class MainActivity : Activity() {
                                 }
                             }
                         }
-                        MotionEvent.ACTION_UP -> if (!moved) { v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP); Bridge.perform(context, Action.SELECT) }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            TvManager.endPointerGesture()
+                            if (e.actionMasked == MotionEvent.ACTION_UP && !moved) {
+                                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                Bridge.perform(context, Action.SELECT)
+                            }
+                        }
                     }
                     true
                 }
