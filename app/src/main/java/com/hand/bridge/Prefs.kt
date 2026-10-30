@@ -33,6 +33,10 @@ object Prefs {
     fun airGestures(c: Context) = sp(c).getBoolean("airgestures", true)
     fun setAirGestures(c: Context, v: Boolean) = sp(c).edit().putBoolean("airgestures", v).apply()
 
+    /** Projector-side Remouse converts Wi-Fi DPAD keys into an accessibility cursor. */
+    fun tvCursor(c: Context) = sp(c).getBoolean("tv_cursor", false)
+    fun setTvCursor(c: Context, enabled: Boolean) = sp(c).edit().putBoolean("tv_cursor", enabled).apply()
+
     /** Ask Air Gestures to switch to a profile named after this app, and receive band status. */
     fun airProfile(c: Context) = sp(c).getBoolean("airprofile", false)
     fun setAirProfile(c: Context, v: Boolean) = sp(c).edit().putBoolean("airprofile", v).apply()
