@@ -298,6 +298,9 @@ class HidBridge(context: Context) {
 
         // HID keyboard usages
         const val K_ENTER = 0x28
+        const val K_EQUAL = 0x2E
+        const val K_MINUS = 0x2D
+        const val MOD_CTRL = 0x01
         const val K_PAGE_UP = 0x4B
         const val K_PAGE_DOWN = 0x4E
         const val K_RIGHT = 0x4F
