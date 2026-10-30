@@ -281,14 +281,7 @@ class MainActivity : Activity() {
                 val ok = NativeBand.setPointer(!NativeBand.pointerOn)
                 toast(if (ok) "Air Mouse input changed" else "Pair a Bluetooth mouse host and connect the native band first")
             }, lp().margins(t = 8))
-            addView(pill(
-                if (Prefs.tvCursor(this@MainActivity)) "Wi-Fi cursor adapter: ON (Remouse)" else "Enable Wi-Fi cursor adapter (Remouse)",
-                BtnStyle.SECONDARY
-            ) {
-                Prefs.setTvCursor(this@MainActivity, !Prefs.tvCursor(this@MainActivity))
-                rebuild()
-            }, lp().margins(t = 8))
-            addView(label("Install Remouse on the projector, enable its Accessibility service, then enable this adapter. Wi-Fi arrow-hold moves its cursor, OK clicks. Without Remouse the Wi-Fi connection controls focus only.", 12f, p.muted), lp().margins(t = 8))
+            addView(label("For JMGO browser cursor movement, use Remote → D-pad calibration. No extra projector app is required. Test real held arrow events against the physical remote.", 12f, p.muted), lp().margins(t = 8))
         })
 
         val checkHint = label("", 14f, p.muted)
@@ -1155,24 +1148,42 @@ class MainActivity : Activity() {
 
         if (TvManager.isTarget()) {
             page.addView(card {
-                addView(label("Website cursor (Wi-Fi)", 17f, bold = true))
-                addView(label("The Wi-Fi remote sends arrows, not browser mouse input. Install Remouse on the JMGO and enable its Accessibility service: it creates an on-screen cursor that moves while arrows are held.", 13f, p.muted), lp().margins(t = 6))
-                addView(toggleRow("Use projector cursor mode", "Requires Remouse enabled on the projector. Arrow DOWN starts immediately; releasing stops cursor movement.", Prefs.tvCursor(this@MainActivity)) {
-                    Prefs.setTvCursor(this@MainActivity, it)
+                addView(label("JMGO browser D-pad calibration", 17f, bold = true))
+                addView(label("Match your physical remote: hold DOWN to move the existing browser cursor; page scrolls at the bottom. No separate cursor app. Different Android TV apps can interpret Wi-Fi presses differently.", 13f, p.muted), lp().margins(t = 6, b = 10))
+                addView(toggleRow("Repeated short arrows instead of held key", "Off = START_LONG at finger down, END_LONG at release. On = repeat SHORT arrows until release. Test both with the browser open.", Prefs.dpadRepeat(this@MainActivity)) {
+                    Prefs.setDpadRepeat(this@MainActivity, it)
                     TvManager.endPointerGesture()
                     rebuild()
                 })
-                addView(pill("Test: hold RIGHT for 1.5 seconds", BtnStyle.SECONDARY) {
-                    if (!TvManager.connected) {
-                        toast("Connect the JMGO over Wi-Fi first.")
-                    } else if (!Prefs.tvCursor(this@MainActivity)) {
-                        toast("Enable projector cursor mode first.")
-                    } else if (TvManager.beginRemoteHold(com.hand.bridge.atv.Keys.RIGHT)) {
-                        ui.postDelayed({ TvManager.endRemoteHold(com.hand.bridge.atv.Keys.RIGHT) }, 1500L)
-                        toast("Look for Remouse's cursor moving RIGHT on the projector.")
-                    } else toast("Wi-Fi command not accepted.")
-                }, lp().margins(t = 10))
-                addView(label("First try the physical remote with Remouse running. If that also doesn't move its cursor, fix Remouse's Accessibility service before testing the band. This does not control the browser's own mouse pointer.", 12f, p.muted), lp().margins(t = 8))
+                addView(hbox {
+                    addView(pill("6 presses/sec", BtnStyle.SECONDARY) {
+                        Prefs.setDpadRepeatMs(this@MainActivity, 160)
+                        toast("D-pad repeat speed: 6/sec")
+                    }, lp(0, weight = 1f).margins(r = 4))
+                    addView(pill("10 presses/sec", BtnStyle.SECONDARY) {
+                        Prefs.setDpadRepeatMs(this@MainActivity, 95)
+                        toast("D-pad repeat speed: 10/sec")
+                    }, lp(0, weight = 1f).margins(r = 4))
+                    addView(pill("15 presses/sec", BtnStyle.SECONDARY) {
+                        Prefs.setDpadRepeatMs(this@MainActivity, 65)
+                        toast("D-pad repeat speed: 15/sec")
+                    }, lp(0, weight = 1f))
+                }, lp().margins(t = 6))
+                addView(hbox {
+                    addView(pill("Test DOWN hold · 2 sec", BtnStyle.SECONDARY) {
+                        if (TvManager.connected && TvManager.beginDpad(com.hand.bridge.atv.Keys.DOWN, false)) {
+                            ui.postDelayed({ TvManager.endDpad(com.hand.bridge.atv.Keys.DOWN) }, 2000)
+                            toast("Held DOWN started. Watch the browser cursor.")
+                        } else toast("Connect the JMGO over Wi-Fi.")
+                    }, lp(0, weight = 1f).margins(r = 6))
+                    addView(pill("Test DOWN repeat · 2 sec", BtnStyle.SECONDARY) {
+                        if (TvManager.connected && TvManager.beginDpad(com.hand.bridge.atv.Keys.DOWN, true, Prefs.dpadRepeatMs(this@MainActivity))) {
+                            ui.postDelayed({ TvManager.endDpad(com.hand.bridge.atv.Keys.DOWN) }, 2000)
+                            toast("Repeated DOWN started. Watch the browser cursor.")
+                        } else toast("Connect the JMGO over Wi-Fi.")
+                    }, lp(0, weight = 1f))
+                }, lp().margins(t = 8))
+                addView(label("Compare these two tests with holding DOWN on the physical remote in the same browser page. If neither moves the existing cursor, the browser may distinguish Bluetooth remote input from Wi-Fi remote commands.", 12f, p.muted), lp().margins(t = 8))
             })
         }
 
@@ -1180,7 +1191,7 @@ class MainActivity : Activity() {
         page.addView(card {
             val pad = FrameLayout(context).apply {
                 background = Ui.rounded(p.surface2, 18)
-                addView(label(if (TvManager.isTarget()) { if (Prefs.tvCursor(this@MainActivity)) "Drag to move Remouse cursor · tap to click" else "Swipe to navigate TV focus · tap to select" } else "Drag to move pointer · tap to click", 13.5f, p.muted), FrameLayout.LayoutParams(
+                addView(label(if (TvManager.isTarget()) "Swipe to send D-pad commands · tap to select" else "Drag to move pointer · tap to click", 13.5f, p.muted), FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
                 var lx = 0f; var ly = 0f; var moved = false
                 setOnTouchListener { v, e ->
@@ -1198,7 +1209,7 @@ class MainActivity : Activity() {
                                             if (delta > 0) com.hand.bridge.atv.Keys.RIGHT else com.hand.bridge.atv.Keys.LEFT
                                         } else if (delta > 0) com.hand.bridge.atv.Keys.DOWN else com.hand.bridge.atv.Keys.UP
                                         val steps = (kotlin.math.abs(delta) / Ui.dp(15)).coerceIn(1, 6)
-                                        moved = (if (Prefs.tvCursor(this@MainActivity)) TvManager.cursorDirection(code, 180L) else TvManager.continuousKey(code, steps)) || moved
+                                        moved = TvManager.continuousKey(code, steps) || moved
                                         lx = e.x; ly = e.y
                                     }
                                 } else {
@@ -1238,26 +1249,16 @@ class MainActivity : Activity() {
                 Action.RIGHT -> com.hand.bridge.atv.Keys.RIGHT
                 else -> return holder
             }
-            var timer: Runnable? = null
             surface.setOnTouchListener { v, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         if (!TvManager.isTarget()) return@setOnTouchListener false
                         v.isPressed = true
-                        if (Prefs.tvCursor(this@MainActivity)) {
-                            // Remouse uses the KEY_DOWN/KEY_UP interval to move its
-                            // overlay cursor. Don't add a 200ms delay to the first DOWN.
-                            TvManager.beginRemoteHold(code)
-                        } else {
-                            Bridge.perform(this@MainActivity, a, discrete = true)
-                            timer = Runnable { TvManager.beginRemoteHold(code) }.also { ui.postDelayed(it, 200L) }
-                        }
+                        TvManager.beginDpad(code, Prefs.dpadRepeat(this@MainActivity), Prefs.dpadRepeatMs(this@MainActivity))
                         true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        timer?.let { ui.removeCallbacks(it) }
-                        timer = null
-                        TvManager.endRemoteHold(code)
+                        TvManager.endDpad(code)
                         v.isPressed = false
                         true
                     }
