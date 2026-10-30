@@ -116,3 +116,13 @@ signed with it needs one uninstall of the debug-signed app; after that, updates 
 - Not all phones implement Android's Bluetooth HID *device* profile (most Pixel/Samsung/Motorola do).
 - Key events can be delivered to accessibility services only while the device is awake on some OEMs; the broadcast path
   has no such restriction.
+
+
+## Fast directional controls and middle-finger zoom
+
+- In Air Gestures, assign your **index/middle finger sliders or dials** to **Send to automation**. A one-off thumb swipe triggers one direction key; a slider sends signed steps and is better for continuous scrolling.
+- In Hand Bridge, open **Gestures**. Map `Index up/down` to `UP/DOWN` or `SCROLL_UP/SCROLL_DOWN`, and `Middle dial (+/-)` to `ZOOM_IN/ZOOM_OUT`. A previously saved custom mapping takes precedence, so review your choices after updating.
+- Fast slider flicks transmit multiple TV D-pad presses with 12 ms spacing; continued slider movement uses Android TV Remote v2's `START_LONG` and `END_LONG` key commands. Holding is controlled by incoming events and stops shortly after events cease.
+- Zoom uses Android TV keycodes `ZOOM_IN`/`ZOOM_OUT`, or Ctrl+plus/minus over HID. **These work only in apps that support the commands**. They do not automatically control JMGO's optical/digital projection-size settings, and cannot simulate arbitrary two-finger pinches over the Google TV Remote protocol.
+- The **Measure speed** test reports a TCP connection handshake, **not** time between hand movement and the projector's image. Air Gestures batches dial and slider steps for up to 250 ms; changing Hand Bridge alone cannot eliminate that.
+- For true mouse movement/touch gestures within the projector, the remote protocol does not expose a general touch/pointer surface. A compatible HID host or a separately installed TV-side accessibility component would be necessary, and even that is application-dependent.
