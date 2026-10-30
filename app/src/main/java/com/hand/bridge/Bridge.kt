@@ -104,7 +104,11 @@ object Bridge {
                 Action.SCROLL_DOWN -> Keys.DOWN
                 else -> tvKey(action)
             } ?: return false
-            return TvManager.continuousKey(code, steps)
+            return if (Prefs.tvCursor(ctx) && code in setOf(Keys.UP, Keys.DOWN, Keys.LEFT, Keys.RIGHT))
+                // Air Gestures sliders batch at roughly 250ms, so keep the key
+                // down through a possible next batch instead of tapping each time.
+                TvManager.cursorDirection(code, 360L)
+            else TvManager.continuousKey(code, steps)
         }
         return handleSteps(ctx, input, steps)
     }
