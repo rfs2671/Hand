@@ -204,7 +204,7 @@ object NativeBand {
                         val code = if (horizontal) {
                             if (d > 0) Keys.RIGHT else Keys.LEFT
                         } else if (d > 0) Keys.DOWN else Keys.UP
-                        TvManager.continuousKey(code, (kotlin.math.abs(d) / 10).coerceIn(1, 6))
+                        TvManager.continuousKey(code, (kotlin.math.abs(d) / 10).coerceIn(1, 6), 90L)
                     } else {
                         Bridge.hid(app).mouse(buttons, whole[0], whole[1])
                     }
