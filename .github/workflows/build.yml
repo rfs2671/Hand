@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main, "claude/**", native-band-pointer-preview]
   pull_request:
   workflow_dispatch:
 
@@ -26,6 +26,24 @@ jobs:
           SDKMGR="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
           if [ ! -x "$SDKMGR" ]; then SDKMGR=$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -1); fi
           "$SDKMGR" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Install native band toolchain (preview only)
+        if: github.ref == 'refs/heads/native-band-pointer-preview'
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMGR="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          if [ ! -x "$SDKMGR" ]; then SDKMGR=$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -1); fi
+          "$SDKMGR" --install "ndk;27.2.12479018"
+      - uses: dtolnay/rust-toolchain@stable
+        if: github.ref == 'refs/heads/native-band-pointer-preview'
+        with:
+          targets: aarch64-linux-android
+      - name: Build native Meta Neural Band protocol engine
+        if: github.ref == 'refs/heads/native-band-pointer-preview'
+        run: |
+          bash scripts/sync-lumen.sh
+          cargo install cargo-ndk --locked
+          export ANDROID_NDK_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk/27.2.12479018"
+          bash third_party/lumen/build-rust.sh
       - uses: gradle/actions/setup-gradle@v4
       # Permanent signing key from repo secrets (see README). Forks/PRs without secrets use the debug key.
       - name: Load signing key
@@ -46,11 +64,11 @@ jobs:
       - run: cp app/build/outputs/apk/release/app-release.apk HandBridge.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: HandBridge-apk
+          name: HandBridge-native-preview-apk
           path: HandBridge.apk
       # Rolling pre-release so the APK can be downloaded straight onto the phone.
       - name: Publish rolling "latest" release
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref != 'refs/heads/native-band-pointer-preview'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-apk
