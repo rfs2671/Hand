@@ -856,6 +856,8 @@ class MainActivity : Activity() {
         Action.BACK -> Glyph.Shape.BACK
         Action.HOME -> Glyph.Shape.HOME
         Action.MENU -> Glyph.Shape.MENU
+        Action.ANSWER_CALL -> Glyph.Shape.PHONE
+        Action.END_CALL -> Glyph.Shape.PHONE
         Action.PLAY_PAUSE -> Glyph.Shape.PLAY_PAUSE
         Action.NEXT -> Glyph.Shape.NEXT
         Action.PREV -> Glyph.Shape.PREV
