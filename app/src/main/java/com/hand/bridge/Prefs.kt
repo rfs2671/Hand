@@ -30,6 +30,12 @@ object Prefs {
     fun carMode(c: Context) = sp(c).getBoolean("car_mode", false)
     fun setCarMode(c: Context, enabled: Boolean) = sp(c).edit().putBoolean("car_mode", enabled).apply()
 
+    /** Route-only BMW volume probe. Defaults on in this isolated car-preview APK.
+     * If the car route isn't publicly exposed, it will NOT change the Pixel volume. */
+    fun remoteCarVolume(c: Context) = sp(c).getBoolean("remote_car_volume", true)
+    fun setRemoteCarVolume(c: Context, enabled: Boolean) =
+        sp(c).edit().putBoolean("remote_car_volume", enabled).apply()
+
     fun enabled(c: Context) = sp(c).getBoolean("enabled", false)
     fun setEnabled(c: Context, v: Boolean) = sp(c).edit().putBoolean("enabled", v).apply()
 
