@@ -44,6 +44,21 @@ reconnects by itself when it joins that Wi-Fi, and finds the TV again if its IP 
 - While a Wi-Fi TV is connected it takes priority over Bluetooth devices.
 - Map any gesture to *Power on / off* in the Gestures tab.
 
+## TV remains selected while the phone is in another app
+
+Connecting to a Wi-Fi TV makes it the persistent output. When you leave Hand Bridge, lock
+your phone, or briefly lose Wi-Fi, the band never switches its routed commands to phone
+controls. Hand Bridge retries the saved TV every 20 seconds while its service runs. During
+outages, gestures may be dropped instead. Disconnect or choose Car media mode explicitly
+to change outputs. Disconnect remains in effect across process and phone restarts.
+
+**Air Gestures profile matters:** set your sliders to **Send to automation** in the
+profile active when Hand Bridge is not on screen. If you set automation only in a
+Hand Bridge-specific per-app profile, Air Gestures may go back to the phone's profile
+when you open another app. You can alternatively create a dedicated `com.hand.bridge`
+profile, configure its sliders for automation, and enable the advanced dedicated-profile
+option in Hand Bridge. Hand Bridge cannot intercept gestures Air Gestures handles locally.
+
 ## If something doesn't work
 - **Projector not listed on Wi-Fi:** the finder uses three methods at once (mDNS, Google Cast announcements, and a direct
   scan for the TV's pairing port), so it should list any Google TV/Android TV on the same Wi-Fi. If not, use *Enter its IP
