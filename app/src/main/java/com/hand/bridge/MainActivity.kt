@@ -484,10 +484,12 @@ class MainActivity : Activity() {
             addView(label("Important: Android Auto does not expose BMW amplifier volume to this app. Phone volume changes do not prove that the car became louder/quieter.", 12.5f, p.warn), lp().margins(t = 8))
             addView(hbox {
                 addView(pill("Test seek −10s", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity)) { toast("Enable Car media mode first"); return@pill }
                     val ok = CarMedia.seek(this@MainActivity, -2)
                     toast(CarMedia.lastStatus + if (ok) "" else " · Check media access and player support")
                 }, lp(0, weight = 1f).margins(r = 8))
                 addView(pill("Test seek +10s", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity)) { toast("Enable Car media mode first"); return@pill }
                     val ok = CarMedia.seek(this@MainActivity, 2)
                     toast(CarMedia.lastStatus + if (ok) "" else " · Check media access and player support")
                 }, lp(0, weight = 1f))
@@ -1015,7 +1017,7 @@ class MainActivity : Activity() {
      * connected device. Tapping a row tries the action without the band.
      */
     private fun testPage(): () -> Unit {
-        AirGestures.sendWhileTesting = TvManager.connected || Bridge.hid(this).host != null
+        AirGestures.sendWhileTesting = Prefs.carMode(this) || TvManager.connected || Bridge.hid(this).host != null
         val summary = label("", 17f, bold = true)
         val bar = hbox { background = Ui.rounded(p.surface2, 4) }
         page.addView(card {
