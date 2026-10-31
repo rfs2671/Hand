@@ -137,6 +137,7 @@ object Prefs {
     }
 
     fun removeTv(c: Context, id: String) {
+        if (selectedTvId(c) == id) setSelectedTv(c, null)
         val keep = tvs(c).filter { it.id != id }
         sp(c).edit().remove("tvs").apply()
         keep.forEach { upsertTv(c, it) }
@@ -144,6 +145,20 @@ object Prefs {
 
     fun lastTv(c: Context) = sp(c).getString("lasttv", null)
     fun setLastTv(c: Context, id: String) = sp(c).edit().putString("lasttv", id).apply()
+
+    /**
+     * Keep the chosen Wi-Fi output independent of its connection. An explicit Disconnect
+     * writes an empty selection so restart never silently reselects the TV.
+     * Existing installations inherit the last connected TV.
+     */
+    fun tvSelectionSet(c: Context) = sp(c).contains("selected_tv")
+    fun selectedTvId(c: Context): String? =
+        sp(c).getString("selected_tv", lastTv(c))?.takeIf { it.isNotBlank() }
+    fun selectedTv(c: Context): Tv? =
+        selectedTvId(c)?.let { id -> tvs(c).firstOrNull { it.id == id } }
+    fun setSelectedTv(c: Context, id: String?) {
+        sp(c).edit().putString("selected_tv", id.orEmpty()).apply()
+    }
 
     /** Our client certificate, created on first use. TVs remember it after pairing, so it must persist. */
     @Synchronized
