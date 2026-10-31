@@ -117,7 +117,7 @@ object CarMedia {
             return false
         }
         val state = session.playbackState
-        if (state == null || state.actions and PlaybackState.ACTION_SEEK_TO == 0L) {
+        if (state == null || (state.actions and PlaybackState.ACTION_SEEK_TO) == 0L) {
             lastStatus = "${session.packageName} does not expose seek-to for this track"
             Trace.add("car seek: $lastStatus")
             return false
