@@ -433,8 +433,17 @@ class MainActivity : Activity() {
                 Prefs.setCarMode(this@MainActivity, it)
                 rebuild()
             })
-            addView(label("Band: index tap = play/pause; thumb left/right = tracks; middle tap = answer call; index hold = end/reject call; dial = phone music volume.", 13f, p.muted), lp().margins(t = 8))
-            addView(label("Calls are regular cellular calls only; an active ringing call is needed to test Answer. End rejects a ringing call or hangs up an active call.", 12.5f, p.muted), lp().margins(t = 8))
+            addView(label("Band: index tap = play/pause · thumb swipe left/right = previous/next track · index/middle left/right SLIDERS = seek ±5 seconds per step · middle tap = answer cellular call · middle double tap (or index hold) = end/reject · dial = phone volume.", 13f, p.muted), lp().margins(t = 8))
+            addView(label("In Air Gestures, assign each of those specific gestures to Send to automation in the active profile. Disable handwriting/text entry while using car mode. Hand Bridge cannot stop Air Gestures from typing directly in WhatsApp.", 13f, p.warn), lp().margins(t = 8))
+            addView(label("Call controls only work for normal carrier calls, not WhatsApp/Signal calls. For the first test, have someone call while the car is parked.", 12.5f, p.muted), lp().margins(t = 8))
+            addView(label("Media controls: ${CarMedia.activePlayer(this@MainActivity)} · ${CarMedia.lastStatus}", 12.5f, p.muted), lp().margins(t = 10))
+            addView(if (CarMedia.allowed(this@MainActivity)) {
+                label("Media access granted: direct player controls and seeking enabled where supported", 13f, p.good)
+            } else pill("Enable media access for playback + seeking", BtnStyle.PRIMARY) {
+                startActivity(CarMedia.permissionIntent())
+            }, lp().margins(t = 8))
+            addView(label("Android's media access permission is sensitive: it also allows reading notifications, even though Hand Bridge's media listener does not inspect them. Optional; without it, media keys are best-effort and seeking is unavailable.", 12.5f, p.muted), lp().margins(t = 6))
+            addView(label("If call gestures fail, check Home → Gesture check for middle_tap or middle_double; absence means Air Gestures didn't send them. End/reject uses a deliberate double tap to avoid accidental hangups.", 12.5f, p.muted), lp().margins(t = 8))
             addView(if (PhoneCalls.permitted(this@MainActivity)) {
                 label("Phone call permission granted", 13f, p.good)
             } else pill("Allow answering and ending calls", BtnStyle.PRIMARY) {
@@ -474,12 +483,22 @@ class MainActivity : Activity() {
             }, lp().margins(t = 8))
             addView(label("Important: Android Auto does not expose BMW amplifier volume to this app. Phone volume changes do not prove that the car became louder/quieter.", 12.5f, p.warn), lp().margins(t = 8))
             addView(hbox {
+                addView(pill("Test seek −10s", BtnStyle.SECONDARY) {
+                    val ok = CarMedia.seek(this@MainActivity, -2)
+                    toast(CarMedia.lastStatus + if (ok) "" else " · Check media access and player support")
+                }, lp(0, weight = 1f).margins(r = 8))
+                addView(pill("Test seek +10s", BtnStyle.SECONDARY) {
+                    val ok = CarMedia.seek(this@MainActivity, 2)
+                    toast(CarMedia.lastStatus + if (ok) "" else " · Check media access and player support")
+                }, lp(0, weight = 1f))
+            }, lp().margins(t = 10))
+            addView(hbox {
                 addView(pill("Test play/pause", BtnStyle.SECONDARY) {
                     if (!Prefs.carMode(this@MainActivity)) {
                         toast("Turn on Car media mode first")
                     } else {
                         val ok = Bridge.perform(this@MainActivity, Action.PLAY_PAUSE)
-                        toast(if (ok) "Sent play/pause to Pixel media app. Check the player." else "Media command not sent")
+                        toast(CarMedia.lastStatus + if (ok) "" else " · Media command failed")
                     }
                 }, lp(0, weight = 1f).margins(r = 8))
                 addView(pill("Test next", BtnStyle.SECONDARY) {
@@ -487,7 +506,7 @@ class MainActivity : Activity() {
                         toast("Turn on Car media mode first")
                     } else {
                         val ok = Bridge.perform(this@MainActivity, Action.NEXT)
-                        toast(if (ok) "Sent next track to Pixel media app. Check the player." else "Media command not sent")
+                        toast(CarMedia.lastStatus + if (ok) "" else " · Media command failed")
                     }
                 }, lp(0, weight = 1f))
             }, lp().margins(t = 10))
@@ -870,6 +889,8 @@ class MainActivity : Activity() {
         Action.PLAY_PAUSE -> Glyph.Shape.PLAY_PAUSE
         Action.NEXT -> Glyph.Shape.NEXT
         Action.PREV -> Glyph.Shape.PREV
+        Action.SEEK_FORWARD -> Glyph.Shape.NEXT
+        Action.SEEK_BACK -> Glyph.Shape.PREV
         Action.VOL_UP -> Glyph.Shape.VOL_UP
         Action.VOL_DOWN -> Glyph.Shape.VOL_DOWN
         Action.ZOOM_IN -> Glyph.Shape.PLUS
@@ -1114,7 +1135,7 @@ class MainActivity : Activity() {
         if (Prefs.carMode(this)) {
             page.addView(card {
                 addView(label("Car media and cellular calls", 18f, bold = true))
-                addView(label("These buttons control your Pixel's active music app, not the BMW's display. Start playing media on the phone or in Android Auto first.", 14f, p.muted), lp().margins(t = 6, b = 12))
+                addView(label("These buttons target the Pixel's media session, not the BMW's display. Allow media access in Devices to seek and play/pause a retained YouTube Music session. If the app has no active session, open it once.", 14f, p.muted), lp().margins(t = 6, b = 12))
                 addView(hbox {
                     addView(pill("Previous", BtnStyle.SECONDARY) {
                         Bridge.perform(this@MainActivity, Action.PREV)
@@ -1126,6 +1147,16 @@ class MainActivity : Activity() {
                         Bridge.perform(this@MainActivity, Action.NEXT)
                     }, lp(0, weight = 1f))
                 })
+                addView(hbox {
+                    addView(pill("Seek −10s", BtnStyle.SECONDARY) {
+                        CarMedia.seek(this@MainActivity, -2)
+                        toast(CarMedia.lastStatus)
+                    }, lp(0, weight = 1f).margins(r = 6))
+                    addView(pill("Seek +10s", BtnStyle.SECONDARY) {
+                        CarMedia.seek(this@MainActivity, 2)
+                        toast(CarMedia.lastStatus)
+                    }, lp(0, weight = 1f))
+                }, lp().margins(t = 10))
                 addView(label("Cellular calls (requires permission granted in Devices)", 12.5f, p.muted), lp().margins(t = 14, b = 6))
                 addView(hbox {
                     addView(pill("Answer ringing call", BtnStyle.SECONDARY) {
