@@ -22,6 +22,8 @@ object Diagnostics {
             ?.split(':')?.any { it.equals(ComponentName(ctx, GestureAccessibilityService::class.java).flattenToString(), true) } == true
         appendLine("Air Gestures broadcasts received: ${AirGestures.received}${if (AirGestures.received > 0) ", last '${AirGestures.lastGesture}' ${(System.currentTimeMillis() - AirGestures.lastAt) / 1000}s ago, ignored because: ${AirGestures.lastRejected ?: "n/a"}" else ""}")
         appendLine("Car media mode: ${Prefs.carMode(ctx)} (phone media only; no BMW display control)")
+        appendLine("Media session permission: ${CarMedia.allowed(ctx)}; player: ${CarMedia.activePlayer(ctx)}")
+        appendLine("Media command: ${CarMedia.lastStatus}; call controls: middle_tap=answer, middle_double or index_hold=end; index/middle horizontal slides=seek")
         appendLine("Phone call permission: ${PhoneCalls.permitted(ctx)}; last: ${PhoneCalls.lastStatus}")
         appendLine("Phone volume: ${PhoneAudio.level(ctx)}; last: ${PhoneAudio.lastStatus}")
         if (Prefs.carMode(ctx)) appendLine("Preset: index tap=play/pause, thumb left/right=previous/next, dial=phone volume")
