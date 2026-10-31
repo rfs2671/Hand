@@ -143,7 +143,7 @@ object TvManager {
      * Pending gestures are queued briefly or dropped, never rerouted to the phone.
      */
     fun selectedTarget(ctx: Context): Boolean =
-        !Prefs.carMode(ctx) && Prefs.selectedTv(ctx) != null
+        !Prefs.carMode(ctx) && Prefs.selectedTvId(ctx) != null
 
     fun isTarget(): Boolean =
         wanted && appCtx?.let(::selectedTarget) == true
