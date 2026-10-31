@@ -793,6 +793,7 @@ class MainActivity : Activity() {
         val mine = TvManager.tv?.id == t.id
         val state = if (mine) TvManager.state else TvState.IDLE
         val live = mine && TvManager.connected
+        val selected = Prefs.selectedTvId(this@MainActivity) == t.id
         addView(hbox {
             addView(FrameLayout(context).apply {
                 background = Ui.rounded(Ui.tint(p.accent, 0x22), 14)
@@ -824,7 +825,7 @@ class MainActivity : Activity() {
         addView(hbox {
             addView(
                 when {
-                    live -> pill("Disconnect", BtnStyle.SECONDARY) { TvManager.disconnect(this@MainActivity) }
+                    live || selected -> pill("Disconnect", BtnStyle.SECONDARY) { TvManager.disconnect(this@MainActivity) }
                     state == TvState.NEEDS_PAIRING -> pill("Pair again", BtnStyle.PRIMARY) { startPairing(t.svc, t.host) }
                     else -> pill("Connect", BtnStyle.PRIMARY, Glyph.Shape.DEVICES) { TvManager.connect(this@MainActivity, t) }
                 },
@@ -838,6 +839,11 @@ class MainActivity : Activity() {
                 }
             })
         }, lp().margins(t = 6))
+        if (selected && state == TvState.NEEDS_PAIRING) {
+            addView(pill("Pair again", BtnStyle.PRIMARY) { startPairing(t.svc, t.host) }, lp().margins(t = 6))
+        } else if (selected && !live) {
+            addView(pill("Retry connection", BtnStyle.TEXT) { TvManager.connect(this@MainActivity, t) }, lp().margins(t = 6))
+        }
         if (!live && t.mac != null) {
             addView(pill("Try to switch it on (Wake-on-LAN)", BtnStyle.TEXT) {
                 TvManager.wake(this@MainActivity, t)
