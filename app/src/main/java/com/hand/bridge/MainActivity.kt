@@ -436,13 +436,20 @@ class MainActivity : Activity() {
             addView(label("Band: index tap = play/pause · thumb swipe left/right = previous/next track · index/middle left/right SLIDERS = seek ±5 seconds per step · middle tap = answer cellular call · middle double tap (or index hold) = end/reject · dial = phone volume.", 13f, p.muted), lp().margins(t = 8))
             addView(label("In Air Gestures, assign each of those specific gestures to Send to automation in the active profile. Disable handwriting/text entry while using car mode. Hand Bridge cannot stop Air Gestures from typing directly in WhatsApp.", 13f, p.warn), lp().margins(t = 8))
             addView(label("Call controls only work for normal carrier calls, not WhatsApp/Signal calls. For the first test, have someone call while the car is parked.", 12.5f, p.muted), lp().margins(t = 8))
+            addView(label("App build: ${packageManager.getPackageInfo(packageName, 0).versionName} · ${packageManager.getPackageInfo(packageName, 0).longVersionCode}", 12.5f, p.muted), lp().margins(t = 8))
             addView(label("Media controls: ${CarMedia.activePlayer(this@MainActivity)} · ${CarMedia.lastStatus}", 12.5f, p.muted), lp().margins(t = 10))
+            addView(pill("Copy exact car diagnostic", BtnStyle.SECONDARY) {
+                getSystemService(android.content.ClipboardManager::class.java)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Car media diagnostic", CarMedia.diagnosis(this@MainActivity)))
+                toast("Diagnostic copied. Paste it into chat to identify the seek/start problem.")
+            }, lp().margins(t = 8))
             addView(if (CarMedia.allowed(this@MainActivity)) {
                 label("Media access granted: direct player controls and seeking enabled where supported", 13f, p.good)
             } else pill("Enable media access for playback + seeking", BtnStyle.PRIMARY) {
                 startActivity(CarMedia.permissionIntent())
             }, lp().margins(t = 8))
-            addView(label("Android's media access permission is sensitive: it also allows reading notifications, even though Hand Bridge's media listener does not inspect them. Optional; without it, media keys are best-effort and seeking is unavailable.", 12.5f, p.muted), lp().margins(t = 6))
+            addView(label("Media access is required to seek; an active playback session is also required. If YouTube Music was force-stopped or has no active session, Android cannot guarantee starting it from a remote gesture.", 12.5f, p.warn), lp().margins(t = 6))
+            addView(label("Notification access can read notifications, though this listener does not inspect them. You may revoke permission any time.", 12.5f, p.muted), lp().margins(t = 6))
             addView(label("If call gestures fail, check Home → Gesture check for middle_tap or middle_double; absence means Air Gestures didn't send them. End/reject uses a deliberate double tap to avoid accidental hangups.", 12.5f, p.muted), lp().margins(t = 8))
             addView(if (PhoneCalls.permitted(this@MainActivity)) {
                 label("Phone call permission granted", 13f, p.good)
