@@ -35,7 +35,7 @@ object Bridge {
         if (Prefs.carMode(ctx)) return action in CAR_ACTIONS
         if (action == Action.NONE) return false
         if (action == Action.POWER) return TvManager.connected || Prefs.tvs(ctx).isNotEmpty()
-        if (TvManager.isTarget()) return true // a Wi-Fi TV understands every action
+        if (TvManager.selectedTarget(ctx)) return true // No phone fallback when TV is selected
         return if (activeMode(ctx) == Mode.LOCAL) action in LOCAL_ACTIONS else true
     }
 
@@ -61,7 +61,7 @@ object Bridge {
             return local(ctx, action)
         }
         if (action == Action.POWER) return TvManager.power(ctx)
-        if (TvManager.isTarget()) {
+        if (TvManager.selectedTarget(ctx)) {
             if (repeat > 0 && repeat % 3 != 0) return true // a held key repeats ~30x/s; the TV needs fewer
             return viaTv(action)
         }
@@ -103,7 +103,7 @@ object Bridge {
         lastInput = input
         if (!claims(ctx, input)) return false
         val action = resolve(ctx, input)
-        if (!Prefs.carMode(ctx) && TvManager.isTarget()) {
+        if (TvManager.selectedTarget(ctx)) {
             val code = tvKey(action)
             if (code != null) return TvManager.keys(code, n, if (action == Action.VOL_UP || action == Action.VOL_DOWN) 25L else 35L)
         }
@@ -132,7 +132,7 @@ object Bridge {
         val action = resolve(ctx, input)
         val slider = isDirectionalSlider(input)
         val count = if (slider) steps.coerceIn(1, 6) * SLIDER_DIRECTION_GAIN else steps
-        if (!Prefs.carMode(ctx) && TvManager.isTarget()) {
+        if (TvManager.selectedTarget(ctx)) {
             val code = when (action) {
                 Action.SCROLL_UP -> Keys.UP
                 Action.SCROLL_DOWN -> Keys.DOWN
