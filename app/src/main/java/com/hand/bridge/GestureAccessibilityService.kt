@@ -18,6 +18,10 @@ class GestureAccessibilityService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (isPhoneOwnKey(event)) return false
+        // Car media input comes exclusively from Air Gestures automation broadcasts.
+        // Do not turn accessibility key events into text/app controls while car mode
+        // is selected. Swallow virtual synthetic keys, but preserve real keyboards.
+        if (Prefs.carMode(this)) return InputDevice.getDevice(event.deviceId)?.isVirtual == true
         val name = "KEY_" + KeyEvent.keyCodeToString(event.keyCode).removePrefix("KEYCODE_")
         return if (event.action == KeyEvent.ACTION_DOWN) {
             Bridge.handle(this, name, event.repeatCount)
