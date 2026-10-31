@@ -103,6 +103,43 @@ presses spaced about 35 ms apart so the TV shows each step; if the link drops, g
 sent when it's back, and a link that has gone silent is detected within about 8 seconds instead of silently losing keys.
 Part of the remaining delay is Air Gestures itself: it batches dial and slide steps every 250 ms.
 
+## Car / Android Auto: stable media and safety
+
+Choose **Devices → Use Car media mode**. This routes only media and cellular-call
+commands to the phone. The car head unit is not a Bluetooth HID device and BMW
+hardware volume is not exposed through standard Android Auto.
+
+For more reliable control of an **already-active** YouTube Music session, tap
+**Enable media access for playback + seeking**. This opens Android's notification
+access settings; enable Hand Bridge music controls. Notification access is
+sensitive and can technically read notifications, although Hand Bridge's
+listener has no notification-reading code. Without this optional permission,
+play/pause and next/previous use best-effort Android media keys; per-song seeking
+cannot work. Nothing can reliably resume an app without an active media session.
+
+Configure these exact **Send to automation** actions in the active Air Gestures
+profile (and check the **During calls** override separately):
+- Index tap: play/pause; thumb swipe left/right: previous/next track
+- Index or middle **left/right slider**: seek backward/forward by 5 seconds per
+  detent (maximum 30 seconds in one broadcast)
+- Middle tap: answer incoming cellular call
+- Middle double tap: end/reject cellular call (index hold also supported if sent)
+- Index or middle dial: Pixel music stream volume, **not guaranteed BMW volume**
+
+**Critical:** Air Gestures → Gestures → Handwriting → Off. Its optional
+accessibility handwriting service can directly insert text into WhatsApp
+and other focused text fields regardless of Hand Bridge's output choice. Hand
+Bridge now ignores its own virtual keyboard events in car mode, but cannot
+intercept writing that Air Gestures performs with its separate accessibility
+service. Disable Air Gestures' separate handwriting accessibility service if
+text entry persists. Also check that the active Air Gestures profile does not
+map gestures to phone taps, typing or screen actions.
+
+In Hand Bridge **Home → Gesture check**, confirm the actual incoming gesture
+names. If the call gestures never appear, Air Gestures has not sent them. For
+cellular calls, grant Android's **Phone calls** permission in Devices. These APIs
+do not answer or hang up WhatsApp/Signal calls. Test parked, not while driving.
+
 ## Optional: Tasker / MacroDroid
 Enable *Allow Tasker / MacroDroid intents* and send a broadcast with action `com.hand.bridge.GESTURE`, **package
 `com.hand.bridge`**, and extra `gesture=pinch` (mapped as `EVT_PINCH`, plus `steps` for dials) or `action=SELECT`.
