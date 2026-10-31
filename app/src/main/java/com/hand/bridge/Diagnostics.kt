@@ -24,6 +24,7 @@ object Diagnostics {
         appendLine("Car media mode: ${Prefs.carMode(ctx)} (phone media only; no BMW display control)")
         appendLine("Media session permission: ${CarMedia.allowed(ctx)}; player: ${CarMedia.activePlayer(ctx)}")
         appendLine("Media command: ${CarMedia.lastStatus}; call controls: middle_tap=answer, middle_double or index_hold=end; index/middle horizontal slides=seek")
+        appendLine(CarMedia.diagnosis(ctx))
         appendLine("Phone call permission: ${PhoneCalls.permitted(ctx)}; last: ${PhoneCalls.lastStatus}")
         appendLine("Phone volume: ${PhoneAudio.level(ctx)}; last: ${PhoneAudio.lastStatus}")
         if (Prefs.carMode(ctx)) appendLine("Preset: index tap=play/pause, thumb left/right=previous/next, dial=phone volume")
