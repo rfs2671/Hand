@@ -73,7 +73,7 @@ object Bridge {
     private val CAR_ACTIONS = setOf(
         Action.PLAY_PAUSE, Action.NEXT, Action.PREV,
         Action.VOL_UP, Action.VOL_DOWN, Action.MUTE,
-        Action.ANSWER_CALL, Action.END_CALL
+        Action.SEEK_FORWARD, Action.SEEK_BACK, Action.ANSWER_CALL, Action.END_CALL
     )
 
     /** Deliberately simple car-only preset; it never mutates projector mappings. */
@@ -81,10 +81,13 @@ object Bridge {
         "EVT_INDEX_TAP" to Action.PLAY_PAUSE,
         "EVT_MIDDLE_TAP" to Action.ANSWER_CALL,
         "EVT_INDEX_HOLD" to Action.END_CALL,
+        "EVT_MIDDLE_DOUBLE" to Action.END_CALL,
         "EVT_SWIPE_LEFT" to Action.PREV,
         "EVT_SWIPE_RIGHT" to Action.NEXT,
-        "EVT_INDEX_LEFT_RIGHT_UP" to Action.NEXT,
-        "EVT_INDEX_LEFT_RIGHT_DOWN" to Action.PREV,
+        "EVT_INDEX_LEFT_RIGHT_UP" to Action.SEEK_FORWARD,
+        "EVT_INDEX_LEFT_RIGHT_DOWN" to Action.SEEK_BACK,
+        "EVT_MIDDLE_LEFT_RIGHT_UP" to Action.SEEK_FORWARD,
+        "EVT_MIDDLE_LEFT_RIGHT_DOWN" to Action.SEEK_BACK,
         "EVT_DIAL_UP" to Action.VOL_UP,
         "EVT_DIAL_DOWN" to Action.VOL_DOWN,
         "EVT_MIDDLE_DIAL_UP" to Action.VOL_UP,
@@ -103,6 +106,9 @@ object Bridge {
         lastInput = input
         if (!claims(ctx, input)) return false
         val action = resolve(ctx, input)
+        if (Prefs.carMode(ctx) && (action == Action.SEEK_FORWARD || action == Action.SEEK_BACK)) {
+            return CarMedia.seek(ctx, if (action == Action.SEEK_FORWARD) n else -n)
+        }
         if (TvManager.selectedTarget(ctx)) {
             val code = tvKey(action)
             if (code != null) return TvManager.keys(code, n, if (action == Action.VOL_UP || action == Action.VOL_DOWN) 25L else 35L)
@@ -166,7 +172,8 @@ object Bridge {
             Action.SCROLL_DOWN -> Keys.PAGE_DOWN
             Action.ZOOM_IN -> Keys.ZOOM_IN
             Action.ZOOM_OUT -> Keys.ZOOM_OUT
-            Action.POWER, Action.NONE, Action.ANSWER_CALL, Action.END_CALL -> null
+            Action.POWER, Action.NONE, Action.ANSWER_CALL, Action.END_CALL,
+            Action.SEEK_FORWARD, Action.SEEK_BACK -> null
         }
     }
 
@@ -200,7 +207,8 @@ object Bridge {
                 if (mode == Mode.MOUSE) h.mouse(0, 0, 0, -3) else h.key(HidBridge.K_PAGE_DOWN)
             Action.ZOOM_IN -> h.key(HidBridge.K_EQUAL, HidBridge.MOD_CTRL)
             Action.ZOOM_OUT -> h.key(HidBridge.K_MINUS, HidBridge.MOD_CTRL)
-            Action.NONE, Action.POWER, Action.ANSWER_CALL, Action.END_CALL -> return false
+            Action.NONE, Action.POWER, Action.ANSWER_CALL, Action.END_CALL,
+            Action.SEEK_FORWARD, Action.SEEK_BACK -> return false
         }
         return true
     }
@@ -219,9 +227,15 @@ object Bridge {
         fun vol(dir: Int) = audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir, AudioManager.FLAG_SHOW_UI)
         val svc = GestureAccessibilityService.instance
         when (a) {
-            Action.PLAY_PAUSE -> media(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-            Action.NEXT -> media(KeyEvent.KEYCODE_MEDIA_NEXT)
-            Action.PREV -> media(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            Action.PLAY_PAUSE, Action.NEXT, Action.PREV ->
+                if (Prefs.carMode(ctx)) return CarMedia.media(ctx, a)
+                else media(when (a) {
+                    Action.PLAY_PAUSE -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                    Action.NEXT -> KeyEvent.KEYCODE_MEDIA_NEXT
+                    else -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                })
+            Action.SEEK_FORWARD -> return if (Prefs.carMode(ctx)) CarMedia.seek(ctx, 1) else false
+            Action.SEEK_BACK -> return if (Prefs.carMode(ctx)) CarMedia.seek(ctx, -1) else false
             Action.VOL_UP -> if (Prefs.carMode(ctx)) return PhoneAudio.adjust(ctx, AudioManager.ADJUST_RAISE) else vol(AudioManager.ADJUST_RAISE)
             Action.VOL_DOWN -> if (Prefs.carMode(ctx)) return PhoneAudio.adjust(ctx, AudioManager.ADJUST_LOWER) else vol(AudioManager.ADJUST_LOWER)
             Action.MUTE -> if (Prefs.carMode(ctx)) return PhoneAudio.adjust(ctx, AudioManager.ADJUST_TOGGLE_MUTE) else vol(AudioManager.ADJUST_TOGGLE_MUTE)
