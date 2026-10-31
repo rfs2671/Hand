@@ -136,6 +136,10 @@ object Bridge {
         learn?.let { learn = null; it(input); return true }
         if (!claims(ctx, input)) return false
         val action = resolve(ctx, input)
+        // Car seeking uses actual calibrated steps. The 3x gain applies only
+        // to JMGO/TV D-pad travel, never to song position.
+        if (Prefs.carMode(ctx) && (action == Action.SEEK_FORWARD || action == Action.SEEK_BACK))
+            return CarMedia.seek(ctx, if (action == Action.SEEK_FORWARD) steps else -steps)
         val slider = isDirectionalSlider(input)
         val count = if (slider) steps.coerceIn(1, 6) * SLIDER_DIRECTION_GAIN else steps
         if (TvManager.selectedTarget(ctx)) {
