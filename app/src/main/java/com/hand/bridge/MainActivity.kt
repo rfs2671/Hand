@@ -269,6 +269,7 @@ class MainActivity : Activity() {
                 !enabled -> "off"
                 Prefs.carMode(this) -> "car-media"
                 tvNow != null -> "tv:${tvNow.id}"
+                Prefs.selectedTv(this) != null -> "tv-wait:${Prefs.selectedTvId(this)}:${TvManager.state}"
                 !btOn -> "bt"
                 host != null -> "on:${host.address}"
                 hid.registered -> "ready"
@@ -282,6 +283,8 @@ class MainActivity : Activity() {
                     !enabled -> set(p.muted, "Bridge is off", "Turn it on and your band controls the device you pick.")
                     Prefs.carMode(this) -> set(p.good, "Car media mode", "Sending gestures to Pixel media controls · not BMW display input")
                     tvNow != null -> set(p.good, "Connected", "${tvNow.name} · Wi-Fi remote")
+                    Prefs.selectedTv(this) != null ->
+                        set(p.accent, "TV remote selected", "Reconnecting to ${Prefs.selectedTv(this)?.name} · no phone fallback")
                     !btOn -> set(p.warn, "Bluetooth is off", "Hand Bridge needs Bluetooth to reach your devices.")
                     host != null -> {
                         val mode = Prefs.device(this, host.address)?.mode ?: Mode.MOUSE
@@ -821,7 +824,7 @@ class MainActivity : Activity() {
         addView(hbox {
             addView(
                 when {
-                    live -> pill("Disconnect", BtnStyle.SECONDARY) { TvManager.disconnect() }
+                    live -> pill("Disconnect", BtnStyle.SECONDARY) { TvManager.disconnect(this@MainActivity) }
                     state == TvState.NEEDS_PAIRING -> pill("Pair again", BtnStyle.PRIMARY) { startPairing(t.svc, t.host) }
                     else -> pill("Connect", BtnStyle.PRIMARY, Glyph.Shape.DEVICES) { TvManager.connect(this@MainActivity, t) }
                 },
@@ -829,7 +832,7 @@ class MainActivity : Activity() {
             )
             addView(pill("Forget", BtnStyle.DANGER) {
                 confirm("Forget ${t.name}?", "This phone will stop controlling it. You can add it again later.", "Forget") {
-                    if (TvManager.tv?.id == t.id) TvManager.disconnect()
+                    if (TvManager.tv?.id == t.id) TvManager.disconnect(this@MainActivity)
                     Prefs.removeTv(this@MainActivity, t.id)
                     rebuild()
                 }
@@ -1155,6 +1158,7 @@ class MainActivity : Activity() {
                 trailing = chip("Live", p.good, dot = true))
             else if (host != null) listRow("Controlling ${host.name ?: host.address}", "${modeName(mode)} mode", modeIcon(mode), p.good,
                 trailing = chip("Live", p.good, dot = true))
+            else if (Prefs.selectedTv(this) != null) listRow("TV remote: ${Prefs.selectedTv(this)?.name}", "Reconnecting over Wi-Fi · no phone fallback", Glyph.Shape.DEVICES, p.accent) { showTab(Tab.DEVICES) }
             else listRow("Controlling this phone", "Connect a device to control it from here", Glyph.Shape.PHONE, p.muted) { showTab(Tab.DEVICES) })
         })
 
