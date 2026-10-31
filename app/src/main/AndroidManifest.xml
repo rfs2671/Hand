@@ -47,6 +47,18 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <!-- Opt-in notification access supplies active music session transport and seek.
+             Does not inspect or store notification content. -->
+        <service
+            android:name=".CarMediaListener"
+            android:exported="true"
+            android:label="Hand Bridge music controls"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- Woken by the system when a remembered Bluetooth device comes into range. -->
         <service
             android:name=".PresenceService"
