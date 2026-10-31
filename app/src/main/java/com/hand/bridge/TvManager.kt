@@ -139,15 +139,14 @@ object TvManager {
     val lastSendDelayMs: Double get() = remote?.lastSendDelayMs ?: -1.0
 
     /**
-     * True when gestures belong to the TV: it is connected, or it was a moment ago and we are
-     * reconnecting. During that gap keys are held briefly instead of falling through to phone actions.
+     * The TV remains the selected output even during prolonged Wi-Fi failures.
+     * Pending gestures are queued briefly or dropped, never rerouted to the phone.
      */
-    fun isTarget(): Boolean {
-        if (connected) return true
-        if (tv == null || !wanted) return false
-        if (state == TvState.NEEDS_PAIRING || state == TvState.UNREACHABLE) return false
-        return System.currentTimeMillis() - lastUp < 120_000
-    }
+    fun selectedTarget(ctx: Context): Boolean =
+        !Prefs.carMode(ctx) && Prefs.selectedTv(ctx) != null
+
+    fun isTarget(): Boolean =
+        wanted && appCtx?.let(::selectedTarget) == true
 
     /** Wi-Fi power saving adds 100-300 ms of jitter; hold the radio awake while a TV is connected. */
     fun refreshLocks(ctx: Context) { appCtx = ctx.applicationContext; updateWifiLock() }
@@ -178,6 +177,8 @@ object TvManager {
         val app = ctx.applicationContext
         appCtx = app
         if (userInitiated) {
+            // Lock the output before network connection attempts begin.
+            Prefs.setSelectedTv(app, target.id)
             wanted = true
             // Gestures only reach the TV while the bridge service runs (it owns the Air Gestures receiver).
             if (!Prefs.enabled(app)) { Trace.add("tv: starting the bridge"); BridgeService.start(app) }
@@ -196,7 +197,8 @@ object TvManager {
         }
     }
 
-    fun disconnect() {
+    fun disconnect(ctx: Context) {
+        Prefs.setSelectedTv(ctx, null)
         releaseHold()
         wanted = false
         io.execute { runCatching { dropConnection() }; set(TvState.IDLE) }
@@ -262,17 +264,23 @@ object TvManager {
             error = reason
             set(TvState.IDLE)
             // Reconnect straight away while the bridge is running (a standby TV makes this fail and back off).
-            if (wanted && t.auto && Prefs.enabled(ctx)) main.postDelayed({ connect(ctx, t, userInitiated = false) }, 300)
+            if (wanted && Prefs.enabled(ctx) && Prefs.selectedTv(ctx)?.id == t.id)
+                main.postDelayed({ connect(ctx, t, userInitiated = false) }, 300)
         }
     }
 
     /** Connect to the preferred auto-connect TV if nothing is connected. Called on service start, screen on, Wi-Fi up. */
     fun reconnectAuto(ctx: Context) {
-        if (connected || busy.get() || !wanted) return
+        if (connected || busy.get() || !wanted || Prefs.carMode(ctx)) return
         val now = System.currentTimeMillis()
         if (now - lastAuto < 15_000) return
-        val list = Prefs.tvs(ctx).filter { it.auto }
-        val pick = list.firstOrNull { it.id == Prefs.lastTv(ctx) } ?: list.firstOrNull() ?: return
+        val pick = Prefs.selectedTv(ctx) ?: run {
+            // Explicit Disconnect (empty selected_tv) must survive process restarts.
+            if (Prefs.tvSelectionSet(ctx)) return
+            val list = Prefs.tvs(ctx).filter { it.auto }
+            list.firstOrNull { it.id == Prefs.lastTv(ctx) } ?: list.firstOrNull() ?: return
+        }
+        Prefs.setSelectedTv(ctx, pick.id)
         lastAuto = now
         connect(ctx, pick, userInitiated = false)
     }
