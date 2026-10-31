@@ -18,6 +18,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 
 /**
  * Foreground service that keeps the process (and the Bluetooth HID registration) alive with the
@@ -26,6 +28,14 @@ import android.os.IBinder
 class BridgeService : Service() {
     private val hid get() = Bridge.hid(this)
     private val onChange: () -> Unit = { notifyStatus() }
+    private val reconnectHandler = Handler(Looper.getMainLooper())
+    private val retrySelectedTv = object : Runnable {
+        override fun run() {
+            if (Prefs.enabled(this@BridgeService) && !Prefs.carMode(this@BridgeService))
+                TvManager.reconnectAuto(this@BridgeService)
+            reconnectHandler.postDelayed(this, 20_000L)
+        }
+    }
 
     private val btState = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -67,6 +77,8 @@ class BridgeService : Service() {
         registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))
         hid.listeners.add(onChange)
         TvManager.listeners.add(onChange)
+        TvManager.refreshLocks(this)
+        reconnectHandler.postDelayed(retrySelectedTv, 20_000L)
         runCatching {
             svc<ConnectivityManager>().registerNetworkCallback(
                 NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), wifi
@@ -99,6 +111,7 @@ class BridgeService : Service() {
         return when {
             Prefs.carMode(this) -> "Car media mode — controlling phone music, not car display"
             tv != null -> "Connected to ${tv.name} over Wi-Fi"
+            Prefs.selectedTv(this) != null -> "TV remote selected — reconnecting to ${Prefs.selectedTv(this)?.name}"
             host != null -> "Connected to ${host.name ?: host.address}"
             hid.registered -> "Ready — waiting for a device"
             else -> "Starting Bluetooth…"
@@ -127,6 +140,7 @@ class BridgeService : Service() {
     }
 
     override fun onDestroy() {
+        reconnectHandler.removeCallbacks(retrySelectedTv)
         hid.listeners.remove(onChange)
         TvManager.listeners.remove(onChange)
         runCatching { svc<ConnectivityManager>().unregisterNetworkCallback(wifi) }
