@@ -42,6 +42,7 @@ object Diagnostics {
         val net = TvFinder.localSubnet(ctx)
         appendLine("Wi-Fi address: ${net?.let { "${it.first}/${it.second}" } ?: "not on Wi-Fi"}")
         appendLine("State: ${TvManager.state} ${TvManager.error?.let { "($it)" } ?: ""}")
+        appendLine("Selected Wi-Fi remote: ${Prefs.selectedTv(ctx)?.name ?: "none"} · active socket: ${TvManager.connected} · never fall back to phone")
         Prefs.tvs(ctx).forEach { appendLine("  saved: ${it.name} ${it.host} mac=${it.mac} auto=${it.auto}") }
 
         CrashLog.last(ctx)?.let {
