@@ -112,24 +112,36 @@ object Bridge {
         return any
     }
 
+    /** Increase calibrated directional slider travel without affecting taps, volume, or dials. */
+    private const val SLIDER_DIRECTION_GAIN = 3
+
+    private fun isDirectionalSlider(input: String): Boolean =
+        input.startsWith("EVT_") && (
+            "_LEFT_RIGHT_" in input || "_UP_DOWN_" in input || "_TOWARD_AWAY_" in input
+        )
+
     /**
-     * Continuous slider/dial steps. Short flicks are sent quickly; sustained movement
-     * becomes a real remote button hold instead of a queue of delayed short presses.
+     * Directional finger slides move three times as far per reported step.
+     * TVs receive individually paced D-pad presses rather than their fixed-rate long-key repeat.
+     * Other continuous controls retain the original hold/repeat behavior.
      */
     fun handleContinuous(ctx: Context, input: String, steps: Int): Boolean {
         lastInput = input
         learn?.let { learn = null; it(input); return true }
         if (!claims(ctx, input)) return false
         val action = resolve(ctx, input)
+        val slider = isDirectionalSlider(input)
+        val count = if (slider) steps.coerceIn(1, 6) * SLIDER_DIRECTION_GAIN else steps
         if (!Prefs.carMode(ctx) && TvManager.isTarget()) {
             val code = when (action) {
                 Action.SCROLL_UP -> Keys.UP
                 Action.SCROLL_DOWN -> Keys.DOWN
                 else -> tvKey(action)
             } ?: return false
-            return TvManager.continuousKey(code, steps)
+            return if (slider) TvManager.sliderKeys(code, count)
+                   else TvManager.continuousKey(code, steps)
         }
-        return handleSteps(ctx, input, steps)
+        return handleSteps(ctx, input, count)
     }
 
     private fun viaTv(a: Action): Boolean = tvKey(a)?.let { TvManager.key(it) } ?: false
