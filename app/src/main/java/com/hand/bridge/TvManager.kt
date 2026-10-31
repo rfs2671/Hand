@@ -102,6 +102,17 @@ object TvManager {
 
 
     /**
+     * Directional band sliders need predictable movement per calibrated step. The TV
+     * controls the rate of a native long hold, so instead send short D-pad presses with
+     * brief spacing. Bridge already applies the 3x gain; cap each batch to keep latency
+     * bounded. The on-screen D-pad continues to use real key-down/key-up holds.
+     */
+    @Synchronized fun sliderKeys(code: Int, count: Int): Boolean {
+        endPointerGesture()
+        return keys(code, count.coerceIn(1, 18), 12L)
+    }
+
+    /**
      * Physical on-screen directional button hold. The touch UI sends a short key
      * immediately, then begins a long key only after the finger stays down.
      * Always release explicitly on touch-up/cancel or when the view is removed.
