@@ -1417,7 +1417,7 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(code, perms, res)
         if (code == REQ_CALLS) {
-            toast(if (PhoneCalls.permitted(this)) "Call permission granted. Middle tap answers; index hold ends." else "Call permission denied. Music control still works.")
+            toast(if (PhoneCalls.permitted(this)) "Call permission granted. Middle tap answers; middle double tap or index hold ends." else "Call permission denied. Music control still works.")
             rebuild()
             return
         }
