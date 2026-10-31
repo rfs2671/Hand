@@ -446,7 +446,8 @@ class MainActivity : Activity() {
             addView(if (CarMedia.allowed(this@MainActivity)) {
                 label("Media access granted: direct player controls and seeking enabled where supported", 13f, p.good)
             } else pill("Enable media access for playback + seeking", BtnStyle.PRIMARY) {
-                startActivity(CarMedia.permissionIntent())
+                runCatching { startActivity(CarMedia.permissionIntent(this@MainActivity)) }
+                    .onFailure { startActivity(CarMedia.permissionListIntent()) }
             }, lp().margins(t = 8))
             addView(label("Media access is required to seek; an active playback session is also required. If YouTube Music was force-stopped or has no active session, Android cannot guarantee starting it from a remote gesture.", 12.5f, p.warn), lp().margins(t = 6))
             addView(label("Notification access can read notifications, though this listener does not inspect them. You may revoke permission any time.", 12.5f, p.muted), lp().margins(t = 6))
