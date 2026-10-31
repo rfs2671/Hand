@@ -7,6 +7,7 @@ enum class Action(val label: String) {
     RIGHT_CLICK("Right click"),
     BACK("Back"), HOME("Home"), MENU("Menu"),
     PLAY_PAUSE("Play / pause"), NEXT("Next track"), PREV("Previous track"),
+    SEEK_FORWARD("Seek forward in song"), SEEK_BACK("Seek backward in song"),
     VOL_UP("Volume up"), VOL_DOWN("Volume down"), MUTE("Mute"),
     ANSWER_CALL("Answer cellular call"), END_CALL("End/reject cellular call"),
     SCROLL_UP("Scroll up"), SCROLL_DOWN("Scroll down"),
@@ -70,7 +71,8 @@ object Actions {
         if (key in map) parse(map[key]) else inferStep(key) ?: Action.NONE
 
     /** One slide can report many steps at once; a TV needs far fewer key presses than volume does. */
-    fun stepCap(a: Action) = if (a in directional || a == Action.SCROLL_UP || a == Action.SCROLL_DOWN) 6 else 20
+    fun stepCap(a: Action) = if (a in directional || a == Action.SCROLL_UP || a == Action.SCROLL_DOWN ||
+        a == Action.SEEK_FORWARD || a == Action.SEEK_BACK) 6 else 20
 
     val directional = setOf(Action.UP, Action.DOWN, Action.LEFT, Action.RIGHT)
 
