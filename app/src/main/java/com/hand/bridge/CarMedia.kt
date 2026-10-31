@@ -33,7 +33,17 @@ object CarMedia {
     private const val SEEK_STEP_MS = 5_000L
     private const val SEEK_CACHE_MS = 1_200L
 
-    fun permissionIntent() = android.content.Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+    /** Open this app's notification-listener permission, not ordinary app Notifications. */
+    fun permissionIntent(ctx: Context) =
+        android.content.Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).apply {
+            putExtra(
+                Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                ComponentName(ctx, CarMediaListener::class.java)
+            )
+        }
+
+    /** Fallback for Android builds without a listener-detail settings activity. */
+    fun permissionListIntent() = android.content.Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
 
     fun allowed(ctx: Context): Boolean {
         val component = ComponentName(ctx, CarMediaListener::class.java)
