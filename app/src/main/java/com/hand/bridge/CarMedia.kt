@@ -64,6 +64,23 @@ object CarMedia {
     fun activePlayer(ctx: Context): String =
         target(ctx)?.packageName ?: if (!allowed(ctx)) "Media access not granted" else "No active music session"
 
+    /** Copyable, concrete diagnosis for car control without exposing song names/messages. */
+    fun diagnosis(ctx: Context): String = buildString {
+        appendLine("Hand Bridge car-media diagnostic")
+        appendLine("Car mode: ${Prefs.carMode(ctx)}")
+        appendLine("Media access: ${allowed(ctx)}")
+        val sessions = controllers(ctx)
+        appendLine("Visible active sessions: ${sessions.size}")
+        sessions.forEach { controller ->
+            val state = controller.playbackState
+            val actions = state?.actions ?: 0L
+            appendLine("Player: ${controller.packageName}, state=${state?.state ?: "none"}, position=${state?.position ?: -1L}ms, seekTo=${(actions and PlaybackState.ACTION_SEEK_TO) != 0L}, forward=${(actions and PlaybackState.ACTION_FAST_FORWARD) != 0L}, rewind=${(actions and PlaybackState.ACTION_REWIND) != 0L}")
+        }
+        appendLine("Selected player: ${activePlayer(ctx)}")
+        appendLine("Last result: $lastStatus")
+        appendLine("Limitation: without a retained media session, Android media keys cannot guarantee starting an inactive player")
+    }
+
     fun media(ctx: Context, action: Action): Boolean {
         val session = target(ctx)
         if (session != null) {
@@ -88,7 +105,9 @@ object CarMedia {
         // Legacy media keys can control a playing app without notification-listener access.
         // They are not proof that an inactive music app started successfully.
         val key = when (action) {
-            Action.PLAY_PAUSE -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+            // No active media session exists, so a PLAY request is less ambiguous
+            // than PLAY_PAUSE. Android can still ignore this if the player is dormant.
+            Action.PLAY_PAUSE -> KeyEvent.KEYCODE_MEDIA_PLAY
             Action.NEXT -> KeyEvent.KEYCODE_MEDIA_NEXT
             Action.PREV -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
             else -> return false
@@ -97,7 +116,7 @@ object CarMedia {
             val audio = ctx.getSystemService(AudioManager::class.java) ?: return false
             audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, key))
             audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, key))
-            lastStatus = "Sent media key, unconfirmed. ${if (!allowed(ctx)) "Allow media access for reliable control." else "Start the music app if no active player exists."}"
+            lastStatus = "Sent ${if (action == Action.PLAY_PAUSE) "PLAY" else "media"} key; unconfirmed. ${if (!allowed(ctx)) "Media access is off." else "No controllable music session: start YouTube Music once to activate it."}"
             Trace.add("car media: $lastStatus")
             true
         } catch (e: Exception) {
@@ -117,8 +136,27 @@ object CarMedia {
             return false
         }
         val state = session.playbackState
-        if (state == null || (state.actions and PlaybackState.ACTION_SEEK_TO) == 0L) {
-            lastStatus = "${session.packageName} does not expose seek-to for this track"
+        if (state == null) {
+            lastStatus = "${session.packageName}: playback state is missing; start a song in the music app first"
+            Trace.add("car seek: $lastStatus")
+            return false
+        }
+        if ((state.actions and PlaybackState.ACTION_SEEK_TO) == 0L) {
+            val fallback = if (signedSteps > 0) PlaybackState.ACTION_FAST_FORWARD else PlaybackState.ACTION_REWIND
+            if ((state.actions and fallback) != 0L) {
+                return try {
+                    if (signedSteps > 0) session.transportControls.fastForward()
+                    else session.transportControls.rewind()
+                    lastStatus = "${session.packageName}: requested ${if (signedSteps > 0) "fast-forward" else "rewind"}; player controls distance (not fixed 5 seconds)"
+                    Trace.add("car seek: $lastStatus")
+                    true
+                } catch (e: Exception) {
+                    lastStatus = "${session.packageName}: seek fallback failed (${e.javaClass.simpleName})"
+                    Trace.add("car seek: $lastStatus")
+                    false
+                }
+            }
+            lastStatus = "${session.packageName}: this playback session does not support seeking (seekTo/forward/rewind unavailable)"
             Trace.add("car seek: $lastStatus")
             return false
         }
