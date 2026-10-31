@@ -1156,9 +1156,9 @@ class MainActivity : Activity() {
             setPadding(Ui.dp(14), Ui.dp(6), Ui.dp(14), Ui.dp(6))
             addView(if (tvLive != null) listRow("Controlling ${tvLive.name}", "Wi-Fi remote", Glyph.Shape.DEVICES, p.good,
                 trailing = chip("Live", p.good, dot = true))
+            else if (Prefs.selectedTv(this@MainActivity) != null) listRow("TV remote: ${Prefs.selectedTv(this@MainActivity)?.name}", "Reconnecting over Wi-Fi · no phone fallback", Glyph.Shape.DEVICES, p.accent) { showTab(Tab.DEVICES) }
             else if (host != null) listRow("Controlling ${host.name ?: host.address}", "${modeName(mode)} mode", modeIcon(mode), p.good,
                 trailing = chip("Live", p.good, dot = true))
-            else if (Prefs.selectedTv(this) != null) listRow("TV remote: ${Prefs.selectedTv(this)?.name}", "Reconnecting over Wi-Fi · no phone fallback", Glyph.Shape.DEVICES, p.accent) { showTab(Tab.DEVICES) }
             else listRow("Controlling this phone", "Connect a device to control it from here", Glyph.Shape.PHONE, p.muted) { showTab(Tab.DEVICES) })
         })
 
