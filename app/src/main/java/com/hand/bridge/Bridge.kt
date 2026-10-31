@@ -76,7 +76,7 @@ object Bridge {
         Action.SEEK_FORWARD, Action.SEEK_BACK, Action.ANSWER_CALL, Action.END_CALL
     )
 
-    /** Deliberately simple car-only preset; it never mutates projector mappings. */
+    /** Fixed car-only gesture preset; never mutates projector mappings. */
     private val CAR_GESTURES = mapOf(
         "EVT_INDEX_TAP" to Action.PLAY_PAUSE,
         "EVT_MIDDLE_TAP" to Action.ANSWER_CALL,
