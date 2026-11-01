@@ -22,13 +22,21 @@ data class Tv(
 object Prefs {
     private fun sp(c: Context) = c.applicationContext.getSharedPreferences("hand", Context.MODE_PRIVATE)
 
-    /**
-     * Manual Android Auto output override. Android Auto does NOT expose the
-     * car display as a Bluetooth HID host; route supported media keys to the
-     * phone's media session instead. This never attempts to pair with the BMW.
-     */
-    fun carMode(c: Context) = sp(c).getBoolean("car_mode", false)
-    fun setCarMode(c: Context, enabled: Boolean) = sp(c).edit().putBoolean("car_mode", enabled).apply()
+    /** Auto routing replaces the legacy sticky car-mode toggle for existing installs. */
+    fun routeChoice(c: Context): OutputChoice =
+        runCatching { OutputChoice.valueOf(sp(c).getString("output_choice", "AUTO") ?: "AUTO") }
+            .getOrDefault(OutputChoice.AUTO)
+
+    fun setRouteChoice(c: Context, choice: OutputChoice) {
+        sp(c).edit().putString("output_choice", choice.name).apply()
+    }
+
+    /** The live effective output; all existing media/TV paths use this resolved mode. */
+    fun carMode(c: Context) = OutputRouter.mediaSelected(c)
+
+    /** Legacy entry point: Off means auto switching, not forced TV. */
+    fun setCarMode(c: Context, enabled: Boolean) =
+        setRouteChoice(c, if (enabled) OutputChoice.MEDIA else OutputChoice.AUTO)
 
     fun enabled(c: Context) = sp(c).getBoolean("enabled", false)
     fun setEnabled(c: Context, v: Boolean) = sp(c).edit().putBoolean("enabled", v).apply()
