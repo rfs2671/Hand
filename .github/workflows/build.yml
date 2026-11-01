@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# Multiple fast pushes must never let an older build overwrite the latest APK.
+concurrency:
+  group: handbridge-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
