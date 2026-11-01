@@ -4,6 +4,8 @@ import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
 import android.media.AudioManager
+import android.media.AudioAttributes
+import android.os.Build
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -89,18 +91,74 @@ object CarMedia {
         }
         appendLine("Selected player: ${activePlayer(ctx)}")
         appendLine("Last result: $lastStatus")
+        appendLine(audioDiagnostic(ctx))
         appendLine("Limitation: without a retained media session, Android media keys cannot guarantee starting an inactive player")
     }
 
-    fun media(ctx: Context, action: Action): Boolean {
+    /**
+     * Simulates a headset media key on the *chosen* music session. Unlike a direct
+     * transport.play() binder call, this exercises the app's media-button callback
+     * used for physical earbud play/pause buttons. Sending to the exact session
+     * avoids an unrelated WhatsApp/cast session intercepting the key.
+     *
+     * A successful dispatch only confirms delivery, never audible output.
+     */
+    private fun mediaButton(session: MediaController, key: Int): Boolean {
+        val at = SystemClock.uptimeMillis()
+        val down = session.dispatchMediaButtonEvent(
+            KeyEvent(at, at, KeyEvent.ACTION_DOWN, key, 0)
+        )
+        val up = session.dispatchMediaButtonEvent(
+            KeyEvent(at, at + 1, KeyEvent.ACTION_UP, key, 0)
+        )
+        return down || up
+    }
+
+    /** Returns system routing state, not a guarantee sound is coming out. */
+    fun audioDiagnostic(ctx: Context): String = buildString {
+        val audio = ctx.getSystemService(AudioManager::class.java)
+        if (audio == null) { appendLine("Audio manager unavailable"); return@buildString }
+        appendLine("Android audio diagnostics")
+        appendLine("Any active music track: ${runCatching { audio.isMusicActive }.getOrNull()}")
+        appendLine("Audio mode: ${runCatching { audio.mode }.getOrNull()} (normal=0, ringtone=1, call=2, communication=3)")
+        appendLine("Music muted: ${runCatching { audio.isStreamMute(AudioManager.STREAM_MUSIC) }.getOrNull()}")
+        appendLine("Music volume: ${runCatching { audio.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrNull()}/${runCatching { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrNull()}")
+        if (Build.VERSION.SDK_INT >= 33) {
+            val devices = runCatching {
+                audio.getAudioDevicesForAttributes(
+                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
+                ).joinToString { "${it.type}:${it.productName}" }
+            }
+            appendLine("Expected MUSIC output devices: ${devices.getOrElse { "unavailable (${it.javaClass.simpleName})" }.ifBlank { "none reported" }}")
+        }
+        appendLine("NOTE: an active player state does not prove sound is reaching headphones")
+    }
+
+    /** Normal wristband play/pause uses a session media-button event, like headphones.
+     * Direct transport remains available only as an explicit A/B diagnostic.
+     */
+    fun media(ctx: Context, action: Action, useDirectTransport: Boolean = false): Boolean {
         val session = target(ctx)
         if (session != null) {
             try {
                 val transport = session.transportControls
                 when (action) {
                     Action.PLAY_PAUSE -> {
-                        if (session.playbackState?.state == PlaybackState.STATE_PLAYING) transport.pause()
-                        else transport.play()
+                        val currentlyPlaying = session.playbackState?.state == PlaybackState.STATE_PLAYING
+                        val key = if (currentlyPlaying) KeyEvent.KEYCODE_MEDIA_PAUSE
+                            else KeyEvent.KEYCODE_MEDIA_PLAY
+                        if (!useDirectTransport && mediaButton(session, key)) {
+                            lastStatus = "${if (currentlyPlaying) "Pause" else "Play"} headphone-style MEDIA KEY delivered to ${session.packageName}; audible output unverified"
+                            Trace.add("car media: $lastStatus")
+                            return true
+                        }
+                        // The session refused media-button delivery, or the user is
+                        // explicitly comparing the original direct transport behavior.
+                        if (currentlyPlaying) transport.pause() else transport.play()
+                        lastStatus = "${if (currentlyPlaying) "Pause" else "Play"} direct transport requested from ${session.packageName}; sound unverified"
+                        Trace.add("car media: $lastStatus")
+                        return true
                     }
                     Action.NEXT -> transport.skipToNext()
                     Action.PREV -> transport.skipToPrevious()
