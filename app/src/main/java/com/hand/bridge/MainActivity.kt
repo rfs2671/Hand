@@ -49,10 +49,18 @@ class MainActivity : Activity() {
         DEVICES("Devices", Glyph.Shape.DEVICES),
         GESTURES("Gestures", Glyph.Shape.GESTURE),
         TEST("Test", Glyph.Shape.CHECK),
-        REMOTE("Remote", Glyph.Shape.REMOTE)
+        REMOTE("Remote", Glyph.Shape.REMOTE),
+        ADVANCED("More", Glyph.Shape.MENU),
+        DETAIL_HOME("Status", Glyph.Shape.HOME),
+        DETAIL_DEVICES("Settings", Glyph.Shape.DEVICES),
+        DETAIL_GESTURES("All gestures", Glyph.Shape.GESTURE),
+        DETAIL_TEST("Detailed test", Glyph.Shape.CHECK)
     }
 
     private var tab = Tab.HOME
+    private val simpleTabs = listOf(Tab.HOME, Tab.DEVICES, Tab.GESTURES, Tab.TEST)
+    private var editProfile = DeviceProfile.CAR
+    private var moreGestures = false
     private lateinit var scroll: ScrollView
     private lateinit var page: LinearLayout
     private lateinit var nav: LinearLayout
@@ -147,7 +155,7 @@ class MainActivity : Activity() {
             setBackgroundColor(p.surface)
             setPadding(Ui.dp(8), Ui.dp(8), Ui.dp(8), Ui.dp(10))
         }
-        Tab.values().forEach { t ->
+        simpleTabs.forEach { t ->
             nav.addView(vbox {
                 gravity = Gravity.CENTER_HORIZONTAL
                 addView(FrameLayout(context).apply {
@@ -162,7 +170,7 @@ class MainActivity : Activity() {
     }
 
     private fun paintNav() {
-        Tab.values().forEachIndexed { i, t ->
+        simpleTabs.forEachIndexed { i, t ->
             val item = nav.getChildAt(i) as LinearLayout
             val pillBox = item.getChildAt(0) as FrameLayout
             val on = t == tab
@@ -177,29 +185,45 @@ class MainActivity : Activity() {
 
     private fun showTab(t: Tab) {
         if (t != tab) Bridge.learn = null
-        AirGestures.testing = t == Tab.TEST
+        AirGestures.testing = t == Tab.TEST || t == Tab.DETAIL_TEST
+        if (t == Tab.TEST) AirGestures.sendWhileTesting = true
         tab = t
         paintNav()
         page.removeAllViews()
         scroll.scrollTo(0, 0)
         headerSub.text = when (t) {
-            Tab.HOME -> "Your band, any screen"
-            Tab.DEVICES -> "What your gestures control"
-            Tab.GESTURES -> "What each gesture does"
-            Tab.TEST -> "Try each gesture and see it work"
-            Tab.REMOTE -> "Test and control by touch"
+            Tab.HOME -> "One gesture. Any device."
+            Tab.DEVICES -> "Pick what you control"
+            Tab.GESTURES -> "Make each gesture yours"
+            Tab.TEST -> "Try it with your hand"
+            Tab.REMOTE -> "Tap to control"
+            Tab.ADVANCED -> "Settings & help"
+            Tab.DETAIL_HOME -> "Detailed status"
+            Tab.DETAIL_DEVICES -> "Connections & permissions"
+            Tab.DETAIL_GESTURES -> "All settings"
+            Tab.DETAIL_TEST -> "Detailed test"
         }
         refresher = when (t) {
-            Tab.HOME -> homePage()
-            Tab.DEVICES -> devicesPage()
-            Tab.GESTURES -> gesturesPage()
-            Tab.TEST -> testPage()
+            Tab.HOME -> simpleHomePage()
+            Tab.DEVICES -> simpleDevicesPage()
+            Tab.GESTURES -> simpleGesturesPage()
+            Tab.TEST -> simpleTestPage()
             Tab.REMOTE -> remotePage()
+            Tab.ADVANCED -> advancedPage()
+            Tab.DETAIL_HOME -> homePage()
+            Tab.DETAIL_DEVICES -> devicesPage()
+            Tab.DETAIL_GESTURES -> gesturesPage()
+            Tab.DETAIL_TEST -> testPage()
         }
         refresher?.invoke()
     }
 
     private fun rebuild() = showTab(tab)
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (tab !in simpleTabs || tab != Tab.HOME) showTab(Tab.HOME) else super.onBackPressed()
+    }
 
     // ---- home -----------------------------------------------------------------------------
 
