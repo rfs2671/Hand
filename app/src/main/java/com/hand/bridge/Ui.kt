@@ -50,8 +50,9 @@ object Ui {
 
     fun init(ctx: Context) {
         density = ctx.resources.displayMetrics.density
-        dark = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        p = if (dark) DARK else LIGHT
+        // Keep the app consistently light and readable even if Android is in dark mode.
+        dark = false
+        p = LIGHT
     }
 
     fun dp(v: Int) = (v * density).toInt()
