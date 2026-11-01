@@ -13,7 +13,7 @@ android {
         targetSdk = 34
         // CI run number, so every published APK installs as an update over the previous one.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "0.3.0-car-debug"
+        versionName = "0.4.0-auto-route"
     }
 
     // One permanent key (from CI secrets) keeps updates installable. Without it the build falls
@@ -41,4 +41,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+}
+
+dependencies {
+    // Official Android Auto detection with LiveData in the foreground bridge.
+    implementation("androidx.car.app:app:1.7.0")
 }
