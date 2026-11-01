@@ -6,7 +6,7 @@ import android.media.AudioManager
 import android.os.Build
 
 /** User preference. AUTO is the default; the old persistent car-mode toggle is ignored. */
-enum class OutputChoice { AUTO, MEDIA, TV }
+enum class OutputChoice { AUTO, MEDIA, TV, PHONE }
 
 /**
  * Route band commands according to the current output rather than the app in the foreground.
@@ -57,6 +57,7 @@ object OutputRouter {
     fun reason(ctx: Context): String = when (Prefs.routeChoice(ctx)) {
         OutputChoice.MEDIA -> "Manual media selection"
         OutputChoice.TV -> "Manual TV selection"
+        OutputChoice.PHONE -> "Phone music"
         OutputChoice.AUTO -> when {
             androidAutoProjection -> "Android Auto connected"
             Prefs.selectedTvId(ctx) != null && TvManager.connected -> "JMGO connected on home Wi-Fi"
@@ -67,6 +68,7 @@ object OutputRouter {
 
     /** Separate car/headphone gesture presets while both control Pixel music. */
     fun mediaProfile(ctx: Context): DeviceProfile {
+        if (Prefs.routeChoice(ctx) == OutputChoice.PHONE) return DeviceProfile.PHONE
         if (Prefs.routeChoice(ctx) == OutputChoice.MEDIA) return Prefs.preferredMediaProfile(ctx)
         if (androidAutoProjection) return DeviceProfile.CAR
         val audio = ctx.getSystemService(AudioManager::class.java)
@@ -81,7 +83,7 @@ object OutputRouter {
     }
 
     fun mediaSelected(ctx: Context): Boolean = when (Prefs.routeChoice(ctx)) {
-        OutputChoice.MEDIA -> true
+        OutputChoice.MEDIA, OutputChoice.PHONE -> true
         OutputChoice.TV -> false
         OutputChoice.AUTO -> androidAutoProjection ||
             (externalAudio(ctx) != null && !(Prefs.selectedTvId(ctx) != null && TvManager.connected))
@@ -89,7 +91,7 @@ object OutputRouter {
 
     /** Recheck TV in the background even while BMW's music Bluetooth link lingers. */
     fun shouldReconnectTv(ctx: Context): Boolean = when (Prefs.routeChoice(ctx)) {
-        OutputChoice.MEDIA -> false
+        OutputChoice.MEDIA, OutputChoice.PHONE -> false
         OutputChoice.TV -> true
         OutputChoice.AUTO -> !androidAutoProjection
     }
