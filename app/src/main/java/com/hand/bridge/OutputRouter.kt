@@ -65,6 +65,21 @@ object OutputRouter {
         }
     }
 
+    /** Separate car/headphone gesture presets while both control Pixel music. */
+    fun mediaProfile(ctx: Context): DeviceProfile {
+        if (Prefs.routeChoice(ctx) == OutputChoice.MEDIA) return Prefs.preferredMediaProfile(ctx)
+        if (androidAutoProjection) return DeviceProfile.CAR
+        val audio = ctx.getSystemService(AudioManager::class.java)
+        val carLike = runCatching {
+            audio?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any { d ->
+                val name = d.productName.toString().lowercase()
+                (name.contains("bmw") || name.contains("mini") ||
+                    name.contains("car audio") || name.contains("android auto"))
+            } ?: false
+        }.getOrDefault(false)
+        return if (carLike) DeviceProfile.CAR else DeviceProfile.HEADPHONES
+    }
+
     fun mediaSelected(ctx: Context): Boolean = when (Prefs.routeChoice(ctx)) {
         OutputChoice.MEDIA -> true
         OutputChoice.TV -> false
