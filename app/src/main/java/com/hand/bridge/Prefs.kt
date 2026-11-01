@@ -38,6 +38,15 @@ object Prefs {
     fun setCarMode(c: Context, enabled: Boolean) =
         setRouteChoice(c, if (enabled) OutputChoice.MEDIA else OutputChoice.AUTO)
 
+    fun preferredMediaProfile(c: Context): DeviceProfile =
+        runCatching {
+            DeviceProfile.valueOf(sp(c).getString("preferred_media_profile", "HEADPHONES") ?: "HEADPHONES")
+        }.getOrDefault(DeviceProfile.HEADPHONES)
+    fun setPreferredMediaProfile(c: Context, profile: DeviceProfile) {
+        require(profile == DeviceProfile.CAR || profile == DeviceProfile.HEADPHONES)
+        sp(c).edit().putString("preferred_media_profile", profile.name).apply()
+    }
+
     fun enabled(c: Context) = sp(c).getBoolean("enabled", false)
     fun setEnabled(c: Context, v: Boolean) = sp(c).edit().putBoolean("enabled", v).apply()
 
