@@ -37,6 +37,9 @@ object GestureProfiles {
         Action.SEEK_FORWARD, Action.SEEK_BACK, Action.ANSWER_CALL, Action.END_CALL
     )
 
+    /** Original car defaults, for compatibility with the old diagnostic and tests. */
+    fun defaultCarAction(key: String): Action? = carDefaults[key]
+
     fun allowed(profile: DeviceProfile): List<Action> = when (profile) {
         DeviceProfile.CAR, DeviceProfile.HEADPHONES, DeviceProfile.PHONE -> mediaActions.toList()
         DeviceProfile.TV -> Action.values().toList()
