@@ -423,6 +423,31 @@ class MainActivity : Activity() {
         else -> action.label
     }
 
+    private fun easyGestureName(key: String): String = when (key) {
+        "EVT_INDEX_TAP" -> "Index finger tap"
+        "EVT_MIDDLE_TAP" -> "Middle finger tap"
+        "EVT_INDEX_DOUBLE" -> "Index double tap"
+        "EVT_MIDDLE_DOUBLE" -> "Middle double tap"
+        "EVT_INDEX_HOLD" -> "Hold index finger"
+        "EVT_SWIPE_LEFT" -> "Swipe left"
+        "EVT_SWIPE_RIGHT" -> "Swipe right"
+        "EVT_SWIPE_UP" -> "Swipe up"
+        "EVT_SWIPE_DOWN" -> "Swipe down"
+        "EVT_INDEX_LEFT_RIGHT_UP" -> "Slide index right"
+        "EVT_INDEX_LEFT_RIGHT_DOWN" -> "Slide index left"
+        "EVT_MIDDLE_LEFT_RIGHT_UP" -> "Slide middle right"
+        "EVT_MIDDLE_LEFT_RIGHT_DOWN" -> "Slide middle left"
+        "EVT_INDEX_UP_DOWN_UP" -> "Slide index up"
+        "EVT_INDEX_UP_DOWN_DOWN" -> "Slide index down"
+        "EVT_MIDDLE_UP_DOWN_UP" -> "Slide middle up"
+        "EVT_MIDDLE_UP_DOWN_DOWN" -> "Slide middle down"
+        "EVT_DIAL_UP" -> "Index twist forward"
+        "EVT_DIAL_DOWN" -> "Index twist backward"
+        "EVT_MIDDLE_DIAL_UP" -> "Middle twist forward"
+        "EVT_MIDDLE_DIAL_DOWN" -> "Middle twist backward"
+        else -> Actions.pretty(key)
+    }
+
     private val simpleGestureKeys get() = listOf(
         "EVT_INDEX_TAP", "EVT_MIDDLE_TAP",
         "EVT_INDEX_DOUBLE", "EVT_MIDDLE_DOUBLE",
@@ -436,14 +461,14 @@ class MainActivity : Activity() {
         if (!Actions.isBand(key)) { toast("Try a wristband gesture"); return }
         val actions = GestureProfiles.allowed(profile)
         val current = GestureProfiles.resolve(this, profile, key)
-        sheet("What does ${Actions.pretty(key)} do?",
+        sheet("What should this do?",
             actions.map { action ->
                 Triple(shortAction(action), null as String?, actionIcon(action)) to {
                     GestureProfiles.set(this@MainActivity, profile, key, action)
                     toast("Saved for ${profile.title}")
                     rebuild()
                 }
-            }, subtitle = "Only changes ${profile.title}. Other devices stay the same.",
+            }, subtitle = "${easyGestureName(key)} · ${profile.title} only",
             selected = actions.indexOf(current))
     }
 
@@ -500,7 +525,7 @@ class MainActivity : Activity() {
             visible.forEachIndexed { i, key ->
                 if (i > 0) addView(divider())
                 val act = GestureProfiles.resolve(this@MainActivity, editProfile, key)
-                addView(listRow(Actions.pretty(key), shortAction(act),
+                addView(listRow(easyGestureName(key), shortAction(act),
                     actionIcon(act), if (act == Action.NONE) p.muted else p.accent) {
                     chooseEasyAction(editProfile, key)
                 })
