@@ -121,6 +121,8 @@
     </application>
 
     <queries>
+        <!-- Android Auto's CarConnection API queries this provider, not a broad app list. -->
+        <provider android:authorities="androidx.car.app.connection" />
         <package android:name="dev.kb896.airgestures" />
         <package android:name="dev.kb896.airgestures.dev" />
     </queries>
