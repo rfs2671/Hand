@@ -32,6 +32,8 @@ object AirGestures {
         private set
     @Volatile var lastRejected: String? = null
         private set
+    @Volatile var lastRoute: String = "No wristband event has reached Hand Bridge yet"
+        private set
 
     /** One message from Air Gestures, kept for the live monitor on Home. [note] says why it was ignored, if it was. */
     class Event(val at: Long, val gesture: String, val steps: Int, val note: String?)
@@ -61,8 +63,13 @@ object AirGestures {
         if (serviceListening) return // the service already recorded this one
         val reason = accept(ctx, receiver)
         record(i, reason)
-        // Nothing is sent from here, but the Test tab still wants to know the gesture arrived.
-        if (reason == null) keyOf(i)?.let { GestureTests.note(it, Bridge.resolve(ctx, it), sent = null, fromBand = true) }
+        // When the foreground service is starting or Android killed it, the activity is
+        // temporarily the only receiver. Route once here rather than silently displaying
+        // a gesture that does nothing. Once the service registers it takes sole ownership.
+        if (reason == null && Prefs.enabled(ctx)) dispatch(ctx, i)
+        else if (reason == null) keyOf(i)?.let {
+            GestureTests.note(it, Bridge.resolve(ctx, it), sent = null, fromBand = true)
+        }
     }
 
     /** True while the Test tab is open. */
@@ -104,7 +111,8 @@ object AirGestures {
             val from = receiver.sentFromPackage
             if (from != null && from !in PKGS) return "sent by $from, not Air Gestures"
         }
-        if (bandConnected == false) return "Air Gestures says the band is disconnected"
+        // STATUS may be stale after a band reconnect or a profile switch.
+        // An actual automation event is more authoritative than an earlier disconnected status.
         return null
     }
 
@@ -123,16 +131,32 @@ object AirGestures {
         else -> "Air Gestures is connected ($received received)."
     }
 
-    /** Sends ourselves a gesture the same way Air Gestures does, to prove the rest of the chain works. */
+    /** Internal synthetic check: doesn't pretend a band event arrived. */
     fun simulate(ctx: Context, gesture: String) {
-        ctx.sendBroadcast(Intent(ACTION_GESTURE).setPackage(ctx.packageName).putExtra("gesture", gesture))
+        val i = Intent(ACTION_GESTURE).putExtra("gesture", gesture)
+        dispatch(ctx, i)
+        Trace.add("air: locally simulated $gesture (not from band)")
+    }
+
+    fun deliveryStatus(ctx: Context): String {
+        val latest = lastAt
+        return when {
+            !Prefs.airGestures(ctx) -> "OFF: Receive Air Gestures is disabled in Hand Bridge."
+            !Prefs.enabled(ctx) -> "OFF: Hand Bridge service is disabled; turn it on from Home."
+            !serviceListening && latest == 0L -> "Bridge service not listening yet. Open Home and enable the bridge."
+            latest == 0L -> "NO wristband broadcasts received. In Air Gestures set each gesture to Send to automation in the ACTIVE profile."
+            lastRejected != null -> "Wristband event ignored: $lastRejected"
+            System.currentTimeMillis() - latest > 30_000L ->
+                "No event in the last 30 seconds. Last: $lastGesture. Perform an index tap and check whether this changes."
+            else -> "Received $received event(s). Last: $lastGesture. Route: $lastRoute"
+        }
     }
 
     /** Routes one GESTURE intent (from Air Gestures or the Tasker entry point) through the mapping table. */
     fun dispatch(ctx: Context, i: Intent) {
         val gesture = i.getStringExtra("gesture")?.trim()?.takeIf { it.isNotEmpty() } ?: return
         val base = "EVT_" + gesture.uppercase().replace(' ', '_').replace('-', '_')
-        if (base == "EVT_TEST") { Bridge.lastInput = base; return }
+        if (base == "EVT_TEST") { Bridge.lastInput = base; lastRoute = "Air Gestures test broadcast received"; return }
         val steps = i.getIntExtra("steps", 0)
         // A dial/slide becomes one mapped input per step, e.g. EVT_DIAL_UP x3 (capped so a fast slide can't flood the host).
         val key = if (steps == 0) base else Actions.stepKey(base, steps)
@@ -148,6 +172,12 @@ object AirGestures {
                 n > 1 -> Bridge.handleSteps(ctx, key, n)
                 else -> Bridge.handle(ctx, key, discrete = true)
             }
+        }
+        lastRoute = when {
+            action == Action.NONE -> "$key: no Car-mode mapping"
+            sent == false -> "$key → ${action.label}: received but not dispatched (bridge/output unavailable)"
+            sent == null -> "$key → ${action.label}: only observed; Test send disabled"
+            else -> "$key → ${action.label}: handed to output, device response not confirmed"
         }
         GestureTests.note(key, action, sent, fromBand = true)
     }
