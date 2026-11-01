@@ -77,7 +77,7 @@ object Bridge {
     )
 
     /** Live gesture meanings, stored separately for each output. */
-    fun carGestureAction(input: String): Action? = null // legacy test helper; use resolve(ctx, input)
+    fun carGestureAction(input: String): Action? = GestureProfiles.defaultCarAction(input)
     fun resolve(ctx: Context, input: String): Action =
         GestureProfiles.resolve(ctx, GestureProfiles.active(ctx), input)
 
