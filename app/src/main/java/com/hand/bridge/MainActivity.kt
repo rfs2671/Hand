@@ -295,7 +295,7 @@ class MainActivity : Activity() {
             addView(hbox {
                 addView(Glyph(context, if (enabled) Glyph.Shape.CHECK else Glyph.Shape.POWER,
                     if (enabled) p.good else p.warn, 25), lp(Ui.dp(25), Ui.dp(25)).margins(r = 12))
-                addView(label(if (enabled) "Ready" else "Turn on Hand Bridge", 22f, p.text, bold = true),
+                addView(label(if (enabled) "Hand Bridge is on" else "Turn on Hand Bridge", 22f, p.text, bold = true),
                     lp(0, weight = 1f))
             })
             addView(label(if (enabled) "Controlling: $activeName" else "Tap Start to connect your band.",
@@ -308,6 +308,16 @@ class MainActivity : Activity() {
                 if (!enabled) startBridge() else showTab(Tab.DEVICES)
             }, lp().margins(t = 16))
         })
+        if (enabled && Prefs.carMode(this) && !CarMedia.allowed(this)) {
+            page.addView(card {
+                addView(label("Let music work", 17f, p.text, bold = true))
+                addView(label("One permission left", 13f, p.muted), lp().margins(t = 5, b = 10))
+                addView(pill("Allow music control", BtnStyle.PRIMARY, Glyph.Shape.PLAY_PAUSE) {
+                    runCatching { startActivity(CarMedia.permissionIntent(this@MainActivity)) }
+                        .onFailure { startActivity(CarMedia.permissionListIntent()) }
+                })
+            })
+        }
         heading("Where should gestures go?")
         page.addView(hbox {
             addView(easyTile("Car", Glyph.Shape.CAR,
@@ -557,7 +567,7 @@ class MainActivity : Activity() {
                 result.setTextColor(p.warn)
             } else if (!fresh) {
                 message.text = "I'm listening"
-                result.text = "Try a finger tap or swipe"
+                result.text = "Tap or swipe your fingers"
                 result.setTextColor(p.muted)
             } else {
                 val key = "EVT_" + e!!.gesture.trim().uppercase().replace(' ', '_').replace('-', '_') +
