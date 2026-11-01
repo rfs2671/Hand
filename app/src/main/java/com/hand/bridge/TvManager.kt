@@ -271,7 +271,7 @@ object TvManager {
 
     /** Connect to the preferred auto-connect TV if nothing is connected. Called on service start, screen on, Wi-Fi up. */
     fun reconnectAuto(ctx: Context) {
-        if (connected || busy.get() || !wanted || Prefs.carMode(ctx)) return
+        if (connected || busy.get() || !wanted || !OutputRouter.shouldReconnectTv(ctx)) return
         val now = System.currentTimeMillis()
         if (now - lastAuto < 15_000) return
         val pick = Prefs.selectedTv(ctx) ?: run {
