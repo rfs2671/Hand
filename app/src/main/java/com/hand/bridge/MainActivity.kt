@@ -267,11 +267,7 @@ class MainActivity : Activity() {
                 Prefs.setRouteChoice(this, OutputChoice.TV)
                 TvManager.reconnectAuto(this)
             }
-            DeviceProfile.PHONE -> {
-                // Phone music uses the same native Android media session commands.
-                Prefs.setPreferredMediaProfile(this, DeviceProfile.HEADPHONES)
-                Prefs.setRouteChoice(this, OutputChoice.MEDIA)
-            }
+            DeviceProfile.PHONE -> Prefs.setRouteChoice(this, OutputChoice.PHONE)
         }
         if (Prefs.enabled(this)) BridgeService.start(this)
         rebuild()
@@ -287,7 +283,11 @@ class MainActivity : Activity() {
         val enabled = Prefs.enabled(this)
         val active = GestureProfiles.active(this)
         val activeName = if (Prefs.carMode(this)) {
-            if (active == DeviceProfile.CAR) "Car music" else "Headphones / music"
+            when (active) {
+                DeviceProfile.CAR -> "Car music"
+                DeviceProfile.PHONE -> "Phone music"
+                else -> "Headphones / music"
+            }
         } else if (TvManager.selectedTarget(this)) {
             Prefs.selectedTv(this)?.name ?: "Projector"
         } else "Phone"
@@ -845,7 +845,8 @@ class MainActivity : Activity() {
                 listOf(
                     "Auto" to Glyph.Shape.DEVICES,
                     "Media" to Glyph.Shape.PLAY_PAUSE,
-                    "TV" to Glyph.Shape.REMOTE
+                    "TV" to Glyph.Shape.REMOTE,
+                    "Phone" to Glyph.Shape.PHONE
                 ), OutputChoice.values().indexOf(Prefs.routeChoice(this@MainActivity))
             ) { index ->
                 Prefs.setRouteChoice(this@MainActivity, OutputChoice.values()[index])
