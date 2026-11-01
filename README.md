@@ -103,6 +103,25 @@ presses spaced about 35 ms apart so the TV shows each step; if the link drops, g
 sent when it's back, and a link that has gone silent is detected within about 8 seconds instead of silently losing keys.
 Part of the remaining delay is Air Gestures itself: it batches dial and slide steps every 250 ms.
 
+## Headphones: silent Play after a band Pause
+
+Media session state can say PLAYING without audible sound. Wristband Play/Pause
+now dispatches an Android media-button DOWN/UP pair to the selected music session,
+using explicit PLAY and PAUSE keys, rather than always calling
+`session.transportControls.play()/pause()`. This is the same Android media-button
+API used by headset controls. If the session refuses media-button delivery, the
+previous transport call is a fallback.
+
+**Devices** includes **Test headset Play/Pause** and **Compare original Play/Pause**
+for a controlled A/B check. Test while headphones are connected with a known
+track; each button toggles one action, and results only confirm a request was
+delivered, not audible audio. **Copy audio route** includes the expected output
+devices, global music activity, stream mute/volume, and playback state. If Android
+is routing music to the wrong device, use the system media-output picker to
+reselect the earbuds. Hand Bridge has no public API to force YouTube Music
+(which runs under a different UID) to route audio to arbitrary headphones,
+and it does not take audio focus away from the actual player.
+
 ## BMW audio remains connected while using the JMGO
 
 The default Auto routing now prioritizes actual Android Auto projection, then a
