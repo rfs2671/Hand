@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep native permission dialogs, sheets and menus consistent with the light UI. -->
+    <style name="Theme.HandBridge" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#3D5AFE</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">#FFF4F5F9</item>
+        <item name="android:navigationBarColor">#FFFFFFFF</item>
+    </style>
+</resources>
