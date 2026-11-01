@@ -428,7 +428,7 @@ class MainActivity : Activity() {
         val hid = Bridge.hid(this)
         page.addView(card {
             addView(label("Car / Android Auto · music and cellular calls", 17f, bold = true))
-            addView(label("Automatically uses phone music controls when Android Auto or Bluetooth headphones are connected. Otherwise the saved JMGO Wi-Fi remote remains selected.", 13.5f, p.muted), lp().margins(t = 5, b = 10))
+            addView(label("Auto: active Android Auto → music; connected JMGO over home Wi-Fi → TV remote; otherwise headphones or car Bluetooth → music. Remembered car audio won't prevent JMGO reconnecting.", 13.5f, p.muted), lp().margins(t = 5, b = 10))
             addView(label("Active: ${if (Prefs.carMode(this@MainActivity)) "Phone music" else "TV / Bluetooth remote"} · ${OutputRouter.reason(this@MainActivity)}", 13f, p.good), lp().margins(t = 8))
             addView(label("Routing preference", 12.5f, p.muted, bold = true), lp().margins(t = 12, b = 8))
             addView(segmented(
@@ -586,7 +586,7 @@ class MainActivity : Activity() {
         }
         devs.forEach { page.addView(deviceCard(it, hid.host?.address == it.address)) }
 
-        fun sig() = "${hid.host?.address}|${hid.registered}|${hid.lastError}|${TvManager.state}|${TvManager.connected}|${Prefs.devices(this).size}"
+        fun sig() = "${hid.host?.address}|${hid.registered}|${hid.lastError}|${TvManager.state}|${TvManager.connected}|${Prefs.devices(this).size}|${Prefs.carMode(this)}|${OutputRouter.reason(this)}"
         val sig = sig()
         return {
             inputState.text = AirGestures.deliveryStatus(this@MainActivity)
