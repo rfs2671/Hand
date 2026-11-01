@@ -225,6 +225,392 @@ class MainActivity : Activity() {
         if (tab !in simpleTabs || tab != Tab.HOME) showTab(Tab.HOME) else super.onBackPressed()
     }
 
+
+    // ---- everyday screens: the four main tabs ------------------------------------------------
+
+    private fun easyTile(name: String, icon: Glyph.Shape, highlighted: Boolean = false, action: () -> Unit): View =
+        vbox {
+            minimumHeight = Ui.dp(118)
+            setPadding(Ui.dp(17), Ui.dp(17), Ui.dp(12), Ui.dp(15))
+            val ink = if (highlighted) p.accent else p.text
+            background = Ui.ripple(
+                Ui.rounded(if (highlighted) Ui.tint(p.accent, 0x15) else p.surface, 20,
+                    if (highlighted) p.accent else p.outline), 20)
+            addView(Glyph(context, icon, ink, 28), lp(Ui.dp(28), Ui.dp(28)))
+            addView(label(name, 16f, ink, bold = true), lp().margins(t = 14))
+            onTap(action)
+            contentDescription = name
+        }
+
+    private fun heading(text: String) {
+        page.addView(label(text, 20f, p.text, bold = true), lp().margins(l = 4, t = 6, b = 12))
+    }
+
+    private fun editFor(profile: DeviceProfile) {
+        editProfile = profile
+        moreGestures = false
+        showTab(Tab.GESTURES)
+    }
+
+    private fun pickOutput(profile: DeviceProfile) {
+        when (profile) {
+            DeviceProfile.CAR, DeviceProfile.HEADPHONES -> {
+                Prefs.setPreferredMediaProfile(this, profile)
+                Prefs.setRouteChoice(this, OutputChoice.MEDIA)
+            }
+            DeviceProfile.TV -> {
+                if (Prefs.selectedTv(this) == null) {
+                    toast("Add your TV first")
+                    showTab(Tab.DETAIL_DEVICES)
+                    return
+                }
+                Prefs.setRouteChoice(this, OutputChoice.TV)
+                TvManager.reconnectAuto(this)
+            }
+            DeviceProfile.PHONE -> {
+                // Phone music uses the same native Android media session commands.
+                Prefs.setPreferredMediaProfile(this, DeviceProfile.HEADPHONES)
+                Prefs.setRouteChoice(this, OutputChoice.MEDIA)
+            }
+        }
+        if (Prefs.enabled(this)) BridgeService.start(this)
+        rebuild()
+    }
+
+    private fun autoOutput() {
+        Prefs.setRouteChoice(this, OutputChoice.AUTO)
+        TvManager.reconnectAuto(this)
+        rebuild()
+    }
+
+    private fun simpleHomePage(): () -> Unit {
+        val enabled = Prefs.enabled(this)
+        val active = GestureProfiles.active(this)
+        val activeName = if (Prefs.carMode(this)) {
+            if (active == DeviceProfile.CAR) "Car music" else "Headphones / music"
+        } else if (TvManager.selectedTarget(this)) {
+            Prefs.selectedTv(this)?.name ?: "Projector"
+        } else "Phone"
+        page.addView(card {
+            addView(hbox {
+                addView(Glyph(context, if (enabled) Glyph.Shape.CHECK else Glyph.Shape.POWER,
+                    if (enabled) p.good else p.warn, 25), lp(Ui.dp(25), Ui.dp(25)).margins(r = 12))
+                addView(label(if (enabled) "Ready" else "Turn on Hand Bridge", 22f, p.text, bold = true),
+                    lp(0, weight = 1f))
+            })
+            addView(label(if (enabled) "Controlling: $activeName" else "Tap Start to connect your band.",
+                15f, p.muted), lp().margins(t = 12))
+            if (Prefs.routeChoice(this@MainActivity) != OutputChoice.AUTO) {
+                addView(chip("You picked this device", p.accent), lp().margins(t = 12))
+            }
+            addView(pill(if (enabled) "It's on" else "Start", if (enabled) BtnStyle.SECONDARY else BtnStyle.PRIMARY,
+                if (enabled) Glyph.Shape.CHECK else Glyph.Shape.POWER) {
+                if (!enabled) startBridge() else showTab(Tab.DEVICES)
+            }, lp().margins(t = 16))
+        })
+        heading("Where should gestures go?")
+        page.addView(hbox {
+            addView(easyTile("Car", Glyph.Shape.CAR,
+                Prefs.routeChoice(this@MainActivity) == OutputChoice.MEDIA &&
+                    Prefs.preferredMediaProfile(this@MainActivity) == DeviceProfile.CAR) {
+                pickOutput(DeviceProfile.CAR)
+            }, lp(0, weight = 1f).margins(r = 7))
+            addView(easyTile("Projector", Glyph.Shape.REMOTE,
+                !Prefs.carMode(this@MainActivity) && TvManager.selectedTarget(this@MainActivity)) {
+                pickOutput(DeviceProfile.TV)
+            }, lp(0, weight = 1f))
+        })
+        page.addView(hbox {
+            addView(easyTile("Headphones", Glyph.Shape.PLAY_PAUSE,
+                Prefs.routeChoice(this@MainActivity) == OutputChoice.MEDIA &&
+                    Prefs.preferredMediaProfile(this@MainActivity) == DeviceProfile.HEADPHONES) {
+                pickOutput(DeviceProfile.HEADPHONES)
+            }, lp(0, weight = 1f).margins(r = 7))
+            addView(easyTile("Automatic", Glyph.Shape.BOLT,
+                Prefs.routeChoice(this@MainActivity) == OutputChoice.AUTO) { autoOutput() },
+                lp(0, weight = 1f))
+        }, lp().margins(t = 12))
+        page.addView(pill("Change my gestures", BtnStyle.PRIMARY, Glyph.Shape.GESTURE) {
+            editFor(GestureProfiles.active(this))
+        }, lp().margins(t = 18))
+        page.addView(pill("Try a gesture", BtnStyle.SECONDARY, Glyph.Shape.CHECK) {
+            showTab(Tab.TEST)
+        }, lp().margins(t = 10))
+        page.addView(pill("More settings", BtnStyle.TEXT, Glyph.Shape.MENU) {
+            showTab(Tab.ADVANCED)
+        }, lp().margins(t = 4))
+        val lastMode = "${Prefs.carMode(this)}|${GestureProfiles.active(this)}|${Prefs.routeChoice(this)}|${Prefs.enabled(this)}"
+        return {
+            val now = "${Prefs.carMode(this)}|${GestureProfiles.active(this)}|${Prefs.routeChoice(this)}|${Prefs.enabled(this)}"
+            if (now != lastMode) rebuild()
+        }
+    }
+
+    private fun simpleDevicesPage(): () -> Unit {
+        heading("Choose a device")
+        page.addView(card {
+            addView(label("Automatic switching", 17f, p.text, bold = true))
+            addView(label(if (Prefs.routeChoice(this@MainActivity) == OutputChoice.AUTO)
+                "On · Hand Bridge chooses for you" else "Off · You chose a device",
+                13.5f, p.muted), lp().margins(t = 4, b = 12))
+            addView(pill("Use automatic", if (Prefs.routeChoice(this@MainActivity) == OutputChoice.AUTO)
+                BtnStyle.SECONDARY else BtnStyle.PRIMARY, Glyph.Shape.BOLT) { autoOutput() })
+        })
+        val choices = listOf(
+            Triple(DeviceProfile.CAR, "Car", Glyph.Shape.CAR),
+            Triple(DeviceProfile.HEADPHONES, "Headphones", Glyph.Shape.PLAY_PAUSE),
+            Triple(DeviceProfile.TV, "TV / Projector", Glyph.Shape.REMOTE),
+            Triple(DeviceProfile.PHONE, "Phone", Glyph.Shape.PHONE)
+        )
+        choices.forEach { (device, name, icon) ->
+            page.addView(card {
+                addView(hbox {
+                    addView(Glyph(context, icon, p.accent, 29),
+                        lp(Ui.dp(29), Ui.dp(29)).margins(r = 16))
+                    addView(vbox {
+                        addView(label(name, 18f, p.text, bold = true))
+                        if (GestureProfiles.active(this@MainActivity) == device) {
+                            addView(label("Using now", 12.5f, p.good))
+                        }
+                    }, lp(0, weight = 1f))
+                })
+                addView(hbox {
+                    addView(pill("Use", BtnStyle.SECONDARY) { pickOutput(device) },
+                        lp(0, weight = 1f).margins(r = 8))
+                    addView(pill("Edit gestures", BtnStyle.PRIMARY) { editFor(device) },
+                        lp(0, weight = 1f))
+                }, lp().margins(t = 16))
+                if (device == DeviceProfile.TV && Prefs.selectedTv(this@MainActivity) == null) {
+                    addView(label("No TV added yet", 12.5f, p.warn), lp().margins(t = 10))
+                }
+            })
+        }
+        page.addView(pill("Add or connect a TV", BtnStyle.SECONDARY, Glyph.Shape.PLUS) {
+            showTab(Tab.DETAIL_DEVICES)
+        })
+        page.addView(pill("More settings", BtnStyle.TEXT) { showTab(Tab.ADVANCED) },
+            lp().margins(t = 6))
+        val before = "${GestureProfiles.active(this)}|${Prefs.routeChoice(this)}|${TvManager.connected}"
+        return {
+            if ("${GestureProfiles.active(this)}|${Prefs.routeChoice(this)}|${TvManager.connected}" != before)
+                rebuild()
+        }
+    }
+
+    private fun shortAction(action: Action): String = when (action) {
+        Action.NONE -> "Do nothing"
+        Action.SELECT -> "OK / Click"
+        Action.PREV -> "Previous song"
+        Action.NEXT -> "Next song"
+        Action.SEEK_FORWARD -> "Forward 5 sec"
+        Action.SEEK_BACK -> "Back 5 sec"
+        Action.ANSWER_CALL -> "Answer call"
+        Action.END_CALL -> "End call"
+        Action.RIGHT_CLICK -> "Right click"
+        Action.ZOOM_IN -> "Zoom in"
+        Action.ZOOM_OUT -> "Zoom out"
+        Action.POWER -> "Power"
+        else -> action.label
+    }
+
+    private val simpleGestureKeys get() = listOf(
+        "EVT_INDEX_TAP", "EVT_MIDDLE_TAP",
+        "EVT_INDEX_DOUBLE", "EVT_MIDDLE_DOUBLE",
+        "EVT_SWIPE_LEFT", "EVT_SWIPE_RIGHT",
+        "EVT_INDEX_LEFT_RIGHT_UP", "EVT_INDEX_LEFT_RIGHT_DOWN",
+        "EVT_MIDDLE_LEFT_RIGHT_UP", "EVT_MIDDLE_LEFT_RIGHT_DOWN",
+        "EVT_DIAL_UP", "EVT_DIAL_DOWN"
+    )
+
+    private fun chooseEasyAction(profile: DeviceProfile, key: String) {
+        if (!Actions.isBand(key)) { toast("Try a wristband gesture"); return }
+        val actions = GestureProfiles.allowed(profile)
+        val current = GestureProfiles.resolve(this, profile, key)
+        sheet("What does ${Actions.pretty(key)} do?",
+            actions.map { action ->
+                Triple(shortAction(action), null as String?, actionIcon(action)) to {
+                    GestureProfiles.set(this@MainActivity, profile, key, action)
+                    toast("Saved for ${profile.title}")
+                    rebuild()
+                }
+            }, subtitle = "Only changes ${profile.title}. Other devices stay the same.",
+            selected = actions.indexOf(current))
+    }
+
+    private fun learnEasyGesture(profile: DeviceProfile) {
+        dialog?.dismiss()
+        Bridge.learn = { key ->
+            runOnUiThread {
+                if (Actions.isBand(key)) chooseEasyAction(profile, key)
+                else { toast("Try a gesture on your wristband"); rebuild() }
+            }
+        }
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Do a gesture")
+            .setMessage("Tap, swipe, or slide your fingers now.")
+            .setNegativeButton("Cancel") { _, _ -> Bridge.learn = null }
+            .setOnCancelListener { Bridge.learn = null }
+            .show()
+    }
+
+    private fun simpleGesturesPage(): () -> Unit {
+        heading("Gestures for")
+        val profiles = listOf(DeviceProfile.CAR, DeviceProfile.HEADPHONES, DeviceProfile.TV, DeviceProfile.PHONE)
+        page.addView(hbox {
+            profiles.forEachIndexed { index, profile ->
+                addView(vbox {
+                    background = Ui.ripple(Ui.rounded(if (editProfile == profile) p.accent else p.surface, 15,
+                        if (editProfile == profile) p.accent else p.outline), 15)
+                    minimumHeight = Ui.dp(54)
+                    gravity = Gravity.CENTER
+                    val icon = when (profile) {
+                        DeviceProfile.CAR -> Glyph.Shape.CAR
+                        DeviceProfile.HEADPHONES -> Glyph.Shape.PLAY_PAUSE
+                        DeviceProfile.TV -> Glyph.Shape.REMOTE
+                        DeviceProfile.PHONE -> Glyph.Shape.PHONE
+                    }
+                    addView(Glyph(context, icon, if (editProfile == profile) p.onAccent else p.accent, 22),
+                        lp(Ui.dp(22), Ui.dp(22)))
+                    addView(label(when (profile) {
+                        DeviceProfile.CAR -> "Car"
+                        DeviceProfile.HEADPHONES -> "Music"
+                        DeviceProfile.TV -> "TV"
+                        DeviceProfile.PHONE -> "Phone"
+                    }, 12f, if (editProfile == profile) p.onAccent else p.text, bold = true))
+                    onTap { editProfile = profile; moreGestures = false; rebuild() }
+                    contentDescription = "Edit ${profile.title} gestures"
+                }, lp(0, weight = 1f).margins(r = if (index < 3) 6 else 0))
+            }
+        }, lp().margins(b = 12))
+        page.addView(card {
+            addView(label("Tap any gesture to change it", 15f, p.text, bold = true))
+            val options = GestureProfiles.choices(this@MainActivity, editProfile)
+            val others = (options.keys + GestureTests.keys()).filter { Actions.isBand(it) && it !in simpleGestureKeys }.distinct()
+            val visible = if (moreGestures) simpleGestureKeys + others else simpleGestureKeys
+            visible.forEachIndexed { i, key ->
+                if (i > 0) addView(divider())
+                val act = GestureProfiles.resolve(this@MainActivity, editProfile, key)
+                addView(listRow(Actions.pretty(key), shortAction(act),
+                    actionIcon(act), if (act == Action.NONE) p.muted else p.accent) {
+                    chooseEasyAction(editProfile, key)
+                })
+            }
+            if (others.isNotEmpty() && !moreGestures) {
+                addView(pill("Show ${others.size} more gestures", BtnStyle.TEXT) {
+                    moreGestures = true; rebuild()
+                }, lp().margins(t = 8))
+            }
+        })
+        page.addView(pill("Do a new gesture", BtnStyle.PRIMARY, Glyph.Shape.GESTURE) {
+            learnEasyGesture(editProfile)
+        })
+        page.addView(pill("Put these back to normal", BtnStyle.TEXT) {
+            confirm("Reset ${editProfile.title}?", "Only ${editProfile.title} gestures will reset.", "Reset") {
+                GestureProfiles.reset(this, editProfile)
+                rebuild()
+            }
+        }, lp().margins(t = 8))
+        return {}
+    }
+
+    private fun simpleTestPage(): () -> Unit {
+        heading("Do a gesture")
+        val message = label("", 24f, p.text, bold = true)
+        val result = label("", 16f, p.muted)
+        val foot = label("", 13.5f, p.muted)
+        page.addView(card {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(Ui.dp(20), Ui.dp(30), Ui.dp(20), Ui.dp(28))
+            addView(FrameLayout(context).apply {
+                background = Ui.rounded(Ui.tint(p.accent, 0x18), 36)
+                addView(Glyph(context, Glyph.Shape.GESTURE, p.accent, 55),
+                    FrameLayout.LayoutParams(Ui.dp(55), Ui.dp(55), Gravity.CENTER))
+            }, lp(Ui.dp(90), Ui.dp(90)))
+            addView(message.apply { gravity = Gravity.CENTER },
+                lp().margins(t = 22))
+            addView(result.apply { gravity = Gravity.CENTER },
+                lp().margins(t = 10))
+            addView(foot.apply { gravity = Gravity.CENTER },
+                lp().margins(t = 10))
+        })
+        page.addView(pill("Edit this gesture", BtnStyle.PRIMARY, Glyph.Shape.GESTURE) {
+            val event = AirGestures.events().firstOrNull { it.gesture.isNotBlank() && it.gesture != "test" }
+            if (event == null) editFor(GestureProfiles.active(this))
+            else {
+                val key = "EVT_" + event.gesture.trim().uppercase().replace(' ', '_').replace('-', '_') +
+                    if (event.steps > 0) "_UP" else if (event.steps < 0) "_DOWN" else ""
+                chooseEasyAction(GestureProfiles.active(this), key)
+            }
+        })
+        page.addView(pill("Open wristband app", BtnStyle.SECONDARY, Glyph.Shape.BLUETOOTH) {
+            packageManager.getLaunchIntentForPackage(AirGestures.PKG)?.let { startActivity(it) }
+                ?: toast("Please install the wristband app first")
+        }, lp().margins(t = 10))
+        page.addView(pill("More help", BtnStyle.TEXT) { showTab(Tab.ADVANCED) },
+            lp().margins(t = 6))
+        fun update() {
+            val e = AirGestures.events().firstOrNull { it.gesture.isNotBlank() && it.gesture != "test" }
+            val fresh = e != null && System.currentTimeMillis() - e.at < 12_000L
+            if (!Prefs.enabled(this)) {
+                message.text = "Tap Start on Home"
+                result.text = "The app is off"
+                result.setTextColor(p.warn)
+            } else if (!fresh) {
+                message.text = "I'm listening"
+                result.text = "Try a finger tap or swipe"
+                result.setTextColor(p.muted)
+            } else {
+                val key = "EVT_" + e!!.gesture.trim().uppercase().replace(' ', '_').replace('-', '_') +
+                    if (e.steps > 0) "_UP" else if (e.steps < 0) "_DOWN" else ""
+                val action = GestureProfiles.resolve(this, GestureProfiles.active(this), key)
+                message.text = "I saw it!"
+                val status = GestureTests.get(key)
+                result.text = when {
+                    e.note != null -> "Couldn't use it"
+                    action == Action.NONE -> "No action yet"
+                    status?.sent == false -> "Couldn't send it"
+                    status?.sent == true -> "Sent: ${shortAction(action)}"
+                    else -> "Recognized: ${shortAction(action)}"
+                }
+                result.setTextColor(when {
+                    e.note != null || status?.sent == false -> p.bad
+                    action == Action.NONE -> p.warn
+                    else -> p.good
+                })
+            }
+            foot.text = "Using: ${GestureProfiles.active(this).title}"
+        }
+        update()
+        return { update() }
+    }
+
+    private fun advancedPage(): () -> Unit {
+        heading("More settings")
+        page.addView(card {
+            addView(listRow("Connect a TV or another device", null, Glyph.Shape.REMOTE) {
+                showTab(Tab.DETAIL_DEVICES)
+            })
+            addView(divider())
+            addView(listRow("Remote control", null, Glyph.Shape.REMOTE) {
+                showTab(Tab.REMOTE)
+            })
+            addView(divider())
+            addView(listRow("All gesture settings", null, Glyph.Shape.GESTURE) {
+                showTab(Tab.DETAIL_GESTURES)
+            })
+            addView(divider())
+            addView(listRow("More tests", null, Glyph.Shape.CHECK) {
+                showTab(Tab.DETAIL_TEST)
+            })
+            addView(divider())
+            addView(listRow("Connection details", null, Glyph.Shape.BLUETOOTH) {
+                showTab(Tab.DETAIL_HOME)
+            })
+        })
+        page.addView(pill("Back to Home", BtnStyle.SECONDARY) { showTab(Tab.HOME) })
+        return {}
+    }
+
     // ---- home -----------------------------------------------------------------------------
 
     private fun homePage(): () -> Unit {
