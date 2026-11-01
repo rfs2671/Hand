@@ -103,6 +103,20 @@ presses spaced about 35 ms apart so the TV shows each step; if the link drops, g
 sent when it's back, and a link that has gone silent is detected within about 8 seconds instead of silently losing keys.
 Part of the remaining delay is Air Gestures itself: it batches dial and slide steps every 250 ms.
 
+## BMW audio remains connected while using the JMGO
+
+The default Auto routing now prioritizes actual Android Auto projection, then a
+live JMGO remote on home Wi-Fi, then Bluetooth/wired media output. Even when
+the BMW's audio Bluetooth connection lingers, the projector keeps reconnecting
+in the background; when the JMGO connection is ready, Hand Bridge automatically
+routes to the TV. You no longer need to manually disconnect BMW audio just to
+control the projector at home.
+
+If Android Auto projection and the projector truly overlap, Android Auto wins.
+Use the manual TV override only as an exception. A disconnected TV cannot
+hijack a music session. This does not change the separate Air Gestures app's
+own profile: it must broadcast gestures from its active profile on both days.
+
 ## Band gestures do nothing but on-screen music tests work
 
 The Car media test buttons call the Android media session **without** the band. If they
