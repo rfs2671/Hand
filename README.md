@@ -103,6 +103,25 @@ presses spaced about 35 ms apart so the TV shows each step; if the link drops, g
 sent when it's back, and a link that has gone silent is detected within about 8 seconds instead of silently losing keys.
 Part of the remaining delay is Air Gestures itself: it batches dial and slide steps every 250 ms.
 
+## Band gestures do nothing but on-screen music tests work
+
+The Car media test buttons call the Android media session **without** the band. If they
+work and wristband gestures don't, check **Devices → Wristband input** and physically
+perform an index tap. The live line must update. If it doesn't, Hand Bridge received
+no gesture broadcast: open Air Gestures and assign the **specific index tap and
+individual left/right sliders** to **Send to automation** in the profile that stays
+active while YouTube Music or WhatsApp is on screen. Set the During calls overrides
+similarly. Do **not** use Send everything to automation: the upstream Air Gestures
+firmware changes sliders into discrete gestures when that is enabled. Leave the
+advanced Hand Bridge profile switch OFF unless the dedicated profile exists in Air
+Gestures and those same automation assignments are configured in it.
+
+If a gesture arrives but no music changes, copy **Band diagnostic** (not Car-media
+diagnostic): it includes last input, effective route and whether the bridge service
+is listening. After an Android service restart, the foreground screen now dispatches
+received gestures directly rather than silently showing them without action. A stale
+band-disconnected STATUS no longer blocks real incoming automation events.
+
 ## Automatic output routing (default)
 
 Car and headphone gestures now switch without opening the app. The background service
