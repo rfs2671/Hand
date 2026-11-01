@@ -20,6 +20,12 @@ import android.net.NetworkRequest
 import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import androidx.car.app.connection.CarConnection
+import androidx.lifecycle.Observer
+import androidx.lifecycle.LiveData
 
 /**
  * Foreground service that keeps the process (and the Bluetooth HID registration) alive with the
@@ -29,6 +35,23 @@ class BridgeService : Service() {
     private val hid get() = Bridge.hid(this)
     private val onChange: () -> Unit = { notifyStatus() }
     private val reconnectHandler = Handler(Looper.getMainLooper())
+
+    private var carConnection: LiveData<Int>? = null
+    private val carObserver = Observer<Int> { state ->
+        OutputRouter.setProjection(state == CarConnection.CONNECTION_TYPE_PROJECTION)
+        notifyStatus()
+        if (!Prefs.carMode(this)) TvManager.reconnectAuto(this)
+    }
+    private val audioCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(devices: Array<out AudioDeviceInfo>?) { routeChanged() }
+        override fun onAudioDevicesRemoved(devices: Array<out AudioDeviceInfo>?) { routeChanged() }
+    }
+    private fun routeChanged() {
+        reconnectHandler.post {
+            notifyStatus()
+            if (!Prefs.carMode(this)) TvManager.reconnectAuto(this)
+        }
+    }
     private val retrySelectedTv = object : Runnable {
         override fun run() {
             if (Prefs.enabled(this@BridgeService) && !Prefs.carMode(this@BridgeService))
@@ -78,6 +101,15 @@ class BridgeService : Service() {
         hid.listeners.add(onChange)
         TvManager.listeners.add(onChange)
         TvManager.refreshLocks(this)
+        runCatching {
+            CarConnection(this).type.also {
+                carConnection = it
+                it.observeForever(carObserver)
+            }
+        }.onFailure { Trace.add("route: Android Auto observer unavailable ${it.javaClass.simpleName}") }
+        runCatching {
+            getSystemService(AudioManager::class.java)?.registerAudioDeviceCallback(audioCallback, reconnectHandler)
+        }.onFailure { Trace.add("route: audio observer unavailable ${it.javaClass.simpleName}") }
         reconnectHandler.postDelayed(retrySelectedTv, 20_000L)
         runCatching {
             svc<ConnectivityManager>().registerNetworkCallback(
@@ -109,7 +141,7 @@ class BridgeService : Service() {
         val host = hid.host
         val tv = TvManager.connectedTv()
         return when {
-            Prefs.carMode(this) -> "Car media mode — controlling phone music, not car display"
+            Prefs.carMode(this) -> "Media controls — ${OutputRouter.reason(this)}"
             tv != null -> "Connected to ${tv.name} over Wi-Fi"
             Prefs.selectedTv(this) != null -> "TV remote selected — reconnecting to ${Prefs.selectedTv(this)?.name}"
             host != null -> "Connected to ${host.name ?: host.address}"
@@ -140,6 +172,10 @@ class BridgeService : Service() {
     }
 
     override fun onDestroy() {
+        carConnection?.removeObserver(carObserver)
+        carConnection = null
+        OutputRouter.setProjection(false)
+        runCatching { getSystemService(AudioManager::class.java)?.unregisterAudioDeviceCallback(audioCallback) }
         reconnectHandler.removeCallbacks(retrySelectedTv)
         hid.listeners.remove(onChange)
         TvManager.listeners.remove(onChange)
