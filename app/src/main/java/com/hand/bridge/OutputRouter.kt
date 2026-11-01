@@ -49,11 +49,17 @@ object OutputRouter {
         }.getOrNull()
     }
 
+    /**
+     * Active projected Android Auto wins. Otherwise an actually connected home TV
+     * wins over a lingering BMW Bluetooth audio connection. Unreachable TV must not
+     * hijack music commands; manual choice remains authoritative.
+     */
     fun reason(ctx: Context): String = when (Prefs.routeChoice(ctx)) {
         OutputChoice.MEDIA -> "Manual media selection"
         OutputChoice.TV -> "Manual TV selection"
         OutputChoice.AUTO -> when {
             androidAutoProjection -> "Android Auto connected"
+            Prefs.selectedTvId(ctx) != null && TvManager.connected -> "JMGO connected on home Wi-Fi"
             externalAudio(ctx) != null -> externalAudio(ctx)!!
             else -> "No external media device; TV remote preferred"
         }
@@ -62,13 +68,23 @@ object OutputRouter {
     fun mediaSelected(ctx: Context): Boolean = when (Prefs.routeChoice(ctx)) {
         OutputChoice.MEDIA -> true
         OutputChoice.TV -> false
-        OutputChoice.AUTO -> androidAutoProjection || externalAudio(ctx) != null
+        OutputChoice.AUTO -> androidAutoProjection ||
+            (externalAudio(ctx) != null && !(Prefs.selectedTvId(ctx) != null && TvManager.connected))
+    }
+
+    /** Recheck TV in the background even while BMW's music Bluetooth link lingers. */
+    fun shouldReconnectTv(ctx: Context): Boolean = when (Prefs.routeChoice(ctx)) {
+        OutputChoice.MEDIA -> false
+        OutputChoice.TV -> true
+        OutputChoice.AUTO -> !androidAutoProjection
     }
 
     fun diagnostic(ctx: Context): String = buildString {
         appendLine("Output selection: ${Prefs.routeChoice(ctx)}")
         appendLine("Android Auto projection: $androidAutoProjection")
         appendLine("External audio: ${externalAudio(ctx) ?: "none"}")
+        appendLine("TV connected: ${TvManager.connected} · selected: ${Prefs.selectedTvId(ctx) ?: "none"}")
+        appendLine("TV reconnect permitted: ${shouldReconnectTv(ctx)}")
         appendLine("Effective output: ${if (mediaSelected(ctx)) "phone media" else "TV/Bluetooth remote"}")
         appendLine("Reason: ${reason(ctx)}")
     }
