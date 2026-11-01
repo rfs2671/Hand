@@ -103,6 +103,27 @@ presses spaced about 35 ms apart so the TV shows each step; if the link drops, g
 sent when it's back, and a link that has gone silent is detected within about 8 seconds instead of silently losing keys.
 Part of the remaining delay is Air Gestures itself: it batches dial and slide steps every 250 ms.
 
+## Automatic output routing (default)
+
+Car and headphone gestures now switch without opening the app. The background service
+observes Android Auto projection using the official CarConnection API and connects to
+the Pixel's media route when Bluetooth, USB or wired audio is available. The Meta Neural
+Band itself is an input device and does not trigger headphone media controls. When media
+devices disconnect, the selected JMGO Wi-Fi remote takes priority again, if reachable.
+
+In **Devices → Routing preference**, choose:
+- **Auto** (default, including existing installs that previously used manual Car mode):
+  Android Auto or headphones → media; otherwise saved TV or Bluetooth HID.
+- **Media** to force phone music and calls, even with no connected headphones.
+- **TV** to force the selected projector remote even with headphones connected.
+
+Android Auto connection status is exposed by Google's official Car App Library but
+recognition still needs to be tested with the actual vehicle. Media gestures require
+an active music app session for deterministic control; a completely inactive YouTube
+Music app cannot be guaranteed to start. Seeking also needs listener permission and
+an active track with seeking support. BMW speaker/amplifier volume remains unsupported.
+For troubleshooting: Devices → Copy exact car diagnostic (includes output reason).
+
 ## Car / Android Auto: stable media and safety
 
 Choose **Devices → Use Car media mode**. This routes only media and cellular-call
