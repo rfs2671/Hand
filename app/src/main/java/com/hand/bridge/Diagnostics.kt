@@ -21,6 +21,9 @@ object Diagnostics {
         val a11y = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             ?.split(':')?.any { it.equals(ComponentName(ctx, GestureAccessibilityService::class.java).flattenToString(), true) } == true
         appendLine("Air Gestures broadcasts received: ${AirGestures.received}${if (AirGestures.received > 0) ", last '${AirGestures.lastGesture}' ${(System.currentTimeMillis() - AirGestures.lastAt) / 1000}s ago, ignored because: ${AirGestures.lastRejected ?: "n/a"}" else ""}")
+        appendLine("Band delivery: ${AirGestures.deliveryStatus(ctx)}")
+        appendLine("Band route: ${AirGestures.lastRoute} · bridge listener running: ${AirGestures.serviceListening}")
+        appendLine("Dedicated Air Gestures profile override: ${Prefs.airProfile(ctx)}")
         appendLine("Car media mode: ${Prefs.carMode(ctx)} (phone media only; no BMW display control)")
         appendLine(OutputRouter.diagnostic(ctx))
         appendLine("Media session permission: ${CarMedia.allowed(ctx)}; player: ${CarMedia.activePlayer(ctx)}")
