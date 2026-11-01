@@ -38,8 +38,8 @@ object GestureProfiles {
     )
 
     fun allowed(profile: DeviceProfile): List<Action> = when (profile) {
-        DeviceProfile.CAR, DeviceProfile.HEADPHONES -> mediaActions.toList()
-        DeviceProfile.TV, DeviceProfile.PHONE -> Action.values().toList()
+        DeviceProfile.CAR, DeviceProfile.HEADPHONES, DeviceProfile.PHONE -> mediaActions.toList()
+        DeviceProfile.TV -> Action.values().toList()
     }
 
     fun active(ctx: Context): DeviceProfile = when {
@@ -61,8 +61,8 @@ object GestureProfiles {
 
     fun choices(ctx: Context, profile: DeviceProfile): Map<String, Action> {
         val defaults = when (profile) {
-            DeviceProfile.CAR, DeviceProfile.HEADPHONES -> carDefaults
-            DeviceProfile.TV, DeviceProfile.PHONE ->
+            DeviceProfile.CAR, DeviceProfile.HEADPHONES, DeviceProfile.PHONE -> carDefaults
+            DeviceProfile.TV ->
                 Prefs.mapping(ctx).filterKeys { Actions.isBand(it) }
                     .mapValues { Actions.parse(it.value) }
         }
@@ -71,13 +71,13 @@ object GestureProfiles {
 
     fun resolve(ctx: Context, profile: DeviceProfile, key: String): Action {
         if (!Actions.isBand(key)) {
-            return if (profile == DeviceProfile.CAR || profile == DeviceProfile.HEADPHONES)
-                Action.NONE else Actions.resolve(Prefs.mapping(ctx), key)
+            return if (profile != DeviceProfile.TV) Action.NONE
+                else Actions.resolve(Prefs.mapping(ctx), key)
         }
         overrides(ctx, profile)[key]?.let { return it }
         return when (profile) {
-            DeviceProfile.CAR, DeviceProfile.HEADPHONES -> carDefaults[key] ?: Action.NONE
-            DeviceProfile.TV, DeviceProfile.PHONE -> Actions.resolve(Prefs.mapping(ctx), key)
+            DeviceProfile.CAR, DeviceProfile.HEADPHONES, DeviceProfile.PHONE -> carDefaults[key] ?: Action.NONE
+            DeviceProfile.TV -> Actions.resolve(Prefs.mapping(ctx), key)
         }
     }
 
