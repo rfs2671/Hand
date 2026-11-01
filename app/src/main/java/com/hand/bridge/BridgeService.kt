@@ -40,7 +40,7 @@ class BridgeService : Service() {
     private val carObserver = Observer<Int> { state ->
         OutputRouter.setProjection(state == CarConnection.CONNECTION_TYPE_PROJECTION)
         notifyStatus()
-        if (!Prefs.carMode(this)) TvManager.reconnectAuto(this)
+        if (OutputRouter.shouldReconnectTv(this)) TvManager.reconnectAuto(this)
     }
     private val audioCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(devices: Array<out AudioDeviceInfo>?) { routeChanged() }
@@ -49,12 +49,12 @@ class BridgeService : Service() {
     private fun routeChanged() {
         reconnectHandler.post {
             notifyStatus()
-            if (!Prefs.carMode(this)) TvManager.reconnectAuto(this)
+            if (OutputRouter.shouldReconnectTv(this)) TvManager.reconnectAuto(this)
         }
     }
     private val retrySelectedTv = object : Runnable {
         override fun run() {
-            if (Prefs.enabled(this@BridgeService) && !Prefs.carMode(this@BridgeService))
+            if (Prefs.enabled(this@BridgeService) && OutputRouter.shouldReconnectTv(this@BridgeService))
                 TvManager.reconnectAuto(this@BridgeService)
             reconnectHandler.postDelayed(this, 20_000L)
         }
