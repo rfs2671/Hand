@@ -281,7 +281,7 @@ class MainActivity : Activity() {
                 fun set(color: Int, t: String, d: String) { dot.color = color; title.text = t; sub.text = d }
                 when {
                     !enabled -> set(p.muted, "Bridge is off", "Turn it on and your band controls the device you pick.")
-                    Prefs.carMode(this) -> set(p.good, "Car media mode", "Sending gestures to Pixel media controls · not BMW display input")
+                    Prefs.carMode(this) -> set(p.good, "Media controls", "${OutputRouter.reason(this)} · controls Pixel playback")
                     tvNow != null -> set(p.good, "Connected", "${tvNow.name} · Wi-Fi remote")
                     Prefs.selectedTv(this) != null ->
                         set(p.accent, "TV remote selected", "Reconnecting to ${Prefs.selectedTv(this)?.name} · no phone fallback")
@@ -421,18 +421,28 @@ class MainActivity : Activity() {
     private fun modeHelp(m: Mode) = when (m) {
         Mode.MOUSE -> "Gestures move a pointer and click. Best for PCs, XREAL Beam Pro and smart TVs."
         Mode.REMOTE -> "Arrows and OK, like the original remote. Best for Android TV and JMGO projectors."
-        Mode.LOCAL -> "Controls supported functions on this Pixel, not the paired device. Android Auto requires the separate Car media mode above; BMW screen and speaker volume cannot be driven by HID."
+        Mode.LOCAL -> "Controls supported music and calls on this Pixel. Android Auto and headphones select phone media automatically; BMW amplifier volume is not available via Android Auto."
     }
 
     private fun devicesPage(): () -> Unit {
         val hid = Bridge.hid(this)
         page.addView(card {
             addView(label("Car / Android Auto · music and cellular calls", 17f, bold = true))
-            addView(label("No Bluetooth mouse pairing with the BMW is needed. Media gestures go to the active music player on this Pixel; Android Auto may play that audio through the car.", 13.5f, p.muted), lp().margins(t = 5, b = 10))
-            addView(toggleRow("Use Car media mode", "Prioritize the Pixel's music app even if a projector or Bluetooth HID host is connected.", Prefs.carMode(this@MainActivity)) {
-                Prefs.setCarMode(this@MainActivity, it)
-                rebuild()
+            addView(label("Automatically uses phone music controls when Android Auto or Bluetooth headphones are connected. Otherwise the saved JMGO Wi-Fi remote remains selected.", 13.5f, p.muted), lp().margins(t = 5, b = 10))
+            addView(label("Active: ${if (Prefs.carMode(this@MainActivity)) "Phone music" else "TV / Bluetooth remote"} · ${OutputRouter.reason(this@MainActivity)}", 13f, p.good), lp().margins(t = 8))
+            addView(label("Routing preference", 12.5f, p.muted, bold = true), lp().margins(t = 12, b = 8))
+            addView(segmented(
+                listOf(
+                    "Auto" to Glyph.Shape.DEVICES,
+                    "Media" to Glyph.Shape.PLAY_PAUSE,
+                    "TV" to Glyph.Shape.REMOTE
+                ), OutputChoice.values().indexOf(Prefs.routeChoice(this@MainActivity))
+            ) { index ->
+                Prefs.setRouteChoice(this@MainActivity, OutputChoice.values()[index])
+                if (Prefs.enabled(this@MainActivity)) BridgeService.start(this@MainActivity)
+                ui.postDelayed({ rebuild() }, 120)
             })
+            addView(label("Auto is recommended. Media and TV force an output if you have multiple devices connected. TV requires a previously selected projector.", 12.5f, p.muted), lp().margins(t = 8))
             addView(label("Band: index tap = play/pause · thumb swipe left/right = previous/next track · index/middle left/right SLIDERS = seek ±5 seconds per step · middle tap = answer cellular call · middle double tap (or index hold) = end/reject · dial = phone volume.", 13f, p.muted), lp().margins(t = 8))
             addView(label("In Air Gestures, assign each of those specific gestures to Send to automation in the active profile. Disable handwriting/text entry while using car mode. Hand Bridge cannot stop Air Gestures from typing directly in WhatsApp.", 13f, p.warn), lp().margins(t = 8))
             addView(label("Call controls only work for normal carrier calls, not WhatsApp/Signal calls. For the first test, have someone call while the car is parked.", 12.5f, p.muted), lp().margins(t = 8))
@@ -544,7 +554,7 @@ class MainActivity : Activity() {
                 setPadding(Ui.dp(24), Ui.dp(32), Ui.dp(24), Ui.dp(32))
                 addView(Glyph(context, Glyph.Shape.DEVICES, p.muted, 48), lp(Ui.dp(48), Ui.dp(48)))
                 addView(label("No devices yet", 18f, bold = true).apply { gravity = Gravity.CENTER }, lp().margins(t = 14))
-                addView(label("Add your projector, TV, PC or XR glasses host. Car media uses the separate mode above; do not pair the car as a mouse.", 14f, p.muted)
+                addView(label("Add your projector, TV, PC or XR glasses host. Car and headphone media switches automatically; do not pair the car as a mouse.", 14f, p.muted)
                     .apply { gravity = Gravity.CENTER }, lp().margins(t = 6))
             })
         }
