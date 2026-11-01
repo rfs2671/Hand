@@ -76,27 +76,10 @@ object Bridge {
         Action.SEEK_FORWARD, Action.SEEK_BACK, Action.ANSWER_CALL, Action.END_CALL
     )
 
-    /** Fixed car-only gesture preset; never mutates projector mappings. */
-    private val CAR_GESTURES = mapOf(
-        "EVT_INDEX_TAP" to Action.PLAY_PAUSE,
-        "EVT_MIDDLE_TAP" to Action.ANSWER_CALL,
-        "EVT_INDEX_HOLD" to Action.END_CALL,
-        "EVT_MIDDLE_DOUBLE" to Action.END_CALL,
-        "EVT_SWIPE_LEFT" to Action.PREV,
-        "EVT_SWIPE_RIGHT" to Action.NEXT,
-        "EVT_INDEX_LEFT_RIGHT_UP" to Action.SEEK_FORWARD,
-        "EVT_INDEX_LEFT_RIGHT_DOWN" to Action.SEEK_BACK,
-        "EVT_MIDDLE_LEFT_RIGHT_UP" to Action.SEEK_FORWARD,
-        "EVT_MIDDLE_LEFT_RIGHT_DOWN" to Action.SEEK_BACK,
-        "EVT_DIAL_UP" to Action.VOL_UP,
-        "EVT_DIAL_DOWN" to Action.VOL_DOWN,
-        "EVT_MIDDLE_DIAL_UP" to Action.VOL_UP,
-        "EVT_MIDDLE_DIAL_DOWN" to Action.VOL_DOWN
-    )
-    fun carGestureAction(input: String): Action? = CAR_GESTURES[input]
+    /** Live gesture meanings, stored separately for each output. */
+    fun carGestureAction(input: String): Action? = null // legacy test helper; use resolve(ctx, input)
     fun resolve(ctx: Context, input: String): Action =
-        if (Prefs.carMode(ctx)) CAR_GESTURES[input] ?: Action.NONE
-        else Actions.resolve(Prefs.mapping(ctx), input)
+        GestureProfiles.resolve(ctx, GestureProfiles.active(ctx), input)
 
     private const val DISCRETE_REPEAT = 17 // ~40 px per event
 
