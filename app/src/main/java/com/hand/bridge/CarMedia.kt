@@ -78,6 +78,7 @@ object CarMedia {
     fun diagnosis(ctx: Context): String = buildString {
         appendLine("Hand Bridge car-media diagnostic")
         appendLine("Car mode: ${Prefs.carMode(ctx)}")
+        appendLine(OutputRouter.diagnostic(ctx))
         appendLine("Media access: ${allowed(ctx)}")
         val sessions = controllers(ctx)
         appendLine("Visible active sessions: ${sessions.size}")
