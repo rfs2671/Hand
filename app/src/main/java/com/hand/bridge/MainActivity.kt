@@ -513,11 +513,10 @@ class MainActivity : Activity() {
                 }, lp(0, weight = 1f))
             }, lp().margins(t = 10))
             addView(hbox {
-                addView(pill("Test play/pause", BtnStyle.SECONDARY) {
-                    if (!Prefs.carMode(this@MainActivity)) {
-                        toast("Turn on Car media mode first")
-                    } else {
-                        val ok = Bridge.perform(this@MainActivity, Action.PLAY_PAUSE)
+                addView(pill("Test headset Play/Pause", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity)) toast("Select Media output first")
+                    else {
+                        val ok = CarMedia.media(this@MainActivity, Action.PLAY_PAUSE)
                         toast(CarMedia.lastStatus + if (ok) "" else " · Media command failed")
                     }
                 }, lp(0, weight = 1f).margins(r = 8))
@@ -530,6 +529,23 @@ class MainActivity : Activity() {
                     }
                 }, lp(0, weight = 1f))
             }, lp().margins(t = 10))
+            addView(hbox {
+                addView(pill("Compare original Play/Pause", BtnStyle.SECONDARY) {
+                    if (!Prefs.carMode(this@MainActivity)) toast("Select Media output first")
+                    else {
+                        CarMedia.media(this@MainActivity, Action.PLAY_PAUSE, useDirectTransport = true)
+                        toast(CarMedia.lastStatus)
+                    }
+                }, lp(0, weight = 1f).margins(r = 8))
+                addView(pill("Copy audio route", BtnStyle.SECONDARY) {
+                    getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText(
+                            "Hand Bridge audio route", CarMedia.diagnosis(this@MainActivity)
+                        ))
+                    toast("Audio route and session diagnostic copied")
+                }, lp(0, weight = 1f))
+            }, lp().margins(t = 8))
+            addView(label("If the headset-style Play/Pause says PLAYING but is silent, open Android's media-output picker and reselect your headphones. Hand Bridge cannot change another app's speaker/headphone route.", 12.5f, p.muted), lp().margins(t = 8))
         })
         page.addView(pill("Add a device", BtnStyle.PRIMARY, Glyph.Shape.PLUS) { addDevice() }, lp().margins(b = 14))
         val inputState = label(AirGestures.deliveryStatus(this@MainActivity), 13f, p.muted)
