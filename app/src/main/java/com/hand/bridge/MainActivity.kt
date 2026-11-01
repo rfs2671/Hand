@@ -532,6 +532,32 @@ class MainActivity : Activity() {
             }, lp().margins(t = 10))
         })
         page.addView(pill("Add a device", BtnStyle.PRIMARY, Glyph.Shape.PLUS) { addDevice() }, lp().margins(b = 14))
+        val inputState = label(AirGestures.deliveryStatus(this@MainActivity), 13f, p.muted)
+        page.addView(card {
+            addView(label("Wristband input", 17f, bold = true))
+            addView(label("This tests real events from Air Gestures. The music buttons above bypass the band and do NOT test its connection.", 12.5f, p.muted), lp().margins(t = 6))
+            addView(inputState, lp().margins(t = 10, b = 10))
+            addView(label("In Air Gestures: in the profile active while you use YouTube Music, set index tap, middle tap, double tap, and individual horizontal sliders to Send to automation. Keep Send EVERYTHING off (it changes slider mode).", 13f, p.warn), lp().margins(t = 6, b = 10))
+            addView(hbox {
+                addView(pill("Open Air Gestures", BtnStyle.PRIMARY) {
+                    val launch = packageManager.getLaunchIntentForPackage(AirGestures.PKG)
+                    if (launch != null) startActivity(launch) else toast("Air Gestures is not installed")
+                }, lp(0, weight = 1f).margins(r = 8))
+                addView(pill("Copy band diagnostic", BtnStyle.SECONDARY) {
+                    val message = "Wristband input: ${AirGestures.deliveryStatus(this@MainActivity)}\n" +
+                        "Service listening: ${AirGestures.serviceListening}\n" +
+                        "Air Gestures advanced profile: ${Prefs.airProfile(this@MainActivity)}\n" +
+                        "Events received: ${AirGestures.received}\n" +
+                        "Last event: ${AirGestures.lastGesture}\n" +
+                        "Last route: ${AirGestures.lastRoute}\n" +
+                        "Effective media mode: ${Prefs.carMode(this@MainActivity)}\n" +
+                        OutputRouter.diagnostic(this@MainActivity)
+                    getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("Hand Bridge band diagnostic", message))
+                    toast("Band input diagnostic copied")
+                }, lp(0, weight = 1f))
+            })
+        })
         val devs = Prefs.devices(this)
         val tvs = Prefs.tvs(this)
         tvs.forEach { page.addView(tvCard(it)) }
@@ -562,7 +588,10 @@ class MainActivity : Activity() {
 
         fun sig() = "${hid.host?.address}|${hid.registered}|${hid.lastError}|${TvManager.state}|${TvManager.connected}|${Prefs.devices(this).size}"
         val sig = sig()
-        return { if (sig() != sig) rebuild() }
+        return {
+            inputState.text = AirGestures.deliveryStatus(this@MainActivity)
+            if (sig() != sig) rebuild()
+        }
     }
 
     private fun deviceCard(d: Dev, connected: Boolean) = card {
@@ -1041,7 +1070,7 @@ class MainActivity : Activity() {
         page.addView(card {
             addView(summary)
             addView(bar, lp(h = Ui.dp(6)).margins(t = 10, b = 8))
-            addView(label("Do each gesture on your band. A row turns green when Hand Bridge receives it and its action is sent. Tap a row to try its action without the band.", 14f, p.muted))
+            addView(label("Gesture test uses the LIVE output mappings (Car mode or TV). Tap a row only tests the app; a green received count proves the band sent the gesture.", 14f, p.muted))
             addView(divider(), lp(h = Ui.dp(1)).margins(t = 12))
             addView(toggleRow("Send actions to the connected device", "Off: gestures are recognised and shown, but nothing is sent anywhere.", AirGestures.sendWhileTesting) {
                 AirGestures.sendWhileTesting = it
@@ -1106,7 +1135,7 @@ class MainActivity : Activity() {
                     setPadding(Ui.dp(12), Ui.dp(6), Ui.dp(12), Ui.dp(6))
                     inGroup.forEachIndexed { n, key ->
                         if (n > 0) addView(divider())
-                        val action = Actions.resolve(map, key)
+                        val action = Bridge.resolve(this@MainActivity, key)
                         val st = GestureTests.status(key, action)
                         val r = GestureTests.get(key)
                         val (chip, color) = when (st) {
