@@ -474,6 +474,28 @@ class MainActivity : Activity() {
             selected = actions.indexOf(current))
     }
 
+    /** An action-first picker: choose which physical band gesture should perform a TV command. */
+    private fun pickTvGesture(action: Action) {
+        val profile = DeviceProfile.TV
+        val keys = (simpleGestureKeys + listOf("EVT_SWIPE_UP", "EVT_SWIPE_DOWN",
+            "EVT_INDEX_UP_DOWN_UP", "EVT_INDEX_UP_DOWN_DOWN")).distinct()
+        sheet("Which finger gesture?", keys.map { key ->
+            Triple(easyGestureName(key),
+                shortAction(GestureProfiles.resolve(this@MainActivity, profile, key)),
+                Glyph.Shape.GESTURE) to {
+                GestureProfiles.set(this@MainActivity, profile, key, action)
+                toast("${easyGestureName(key)} now does ${shortAction(action)} on TV")
+                rebuild()
+            }
+        }, subtitle = "Choose a gesture for ${shortAction(action)} on TV only.")
+    }
+
+    private fun tvGestureName(action: Action): String =
+        (simpleGestureKeys + GestureProfiles.choices(this, DeviceProfile.TV).keys)
+            .distinct().firstOrNull {
+                GestureProfiles.resolve(this, DeviceProfile.TV, it) == action
+            }?.let(::easyGestureName) ?: "Choose a gesture"
+
     private fun learnEasyGesture(profile: DeviceProfile) {
         dialog?.dismiss()
         Bridge.learn = { key ->
@@ -519,6 +541,23 @@ class MainActivity : Activity() {
                 }, lp(0, weight = 1f).margins(r = if (index < 3) 6 else 0))
             }
         }, lp().margins(b = 12))
+        if (editProfile == DeviceProfile.TV) {
+            page.addView(card {
+                addView(label("TV shortcuts", 18f, p.text, bold = true))
+                addView(label("Tap a button to choose its finger gesture.", 13f, p.muted),
+                    lp().margins(t = 5, b = 9))
+                addView(listRow("Turn TV on / off", tvGestureName(Action.POWER),
+                    Glyph.Shape.POWER, p.accent) { pickTvGesture(Action.POWER) })
+                addView(divider())
+                addView(listRow("Open TV settings", tvGestureName(Action.SETTINGS),
+                    Glyph.Shape.MENU, p.accent) { pickTvGesture(Action.SETTINGS) })
+                addView(divider())
+                addView(listRow("App menu", tvGestureName(Action.MENU),
+                    Glyph.Shape.MENU, p.accent) { pickTvGesture(Action.MENU) })
+                addView(label("TV settings opens Android settings when supported. The projector's own picture menu may require its original remote.",
+                    12f, p.muted), lp().margins(t = 10))
+            })
+        }
         page.addView(card {
             addView(label("Tap any gesture to change it", 15f, p.text, bold = true))
             val options = GestureProfiles.choices(this@MainActivity, editProfile)
@@ -570,6 +609,34 @@ class MainActivity : Activity() {
             addView(foot.apply { gravity = Gravity.CENTER },
                 lp().margins(t = 10))
         })
+        if (Prefs.selectedTv(this) != null) {
+            page.addView(card {
+                addView(label("Try TV buttons", 17f, p.text, bold = true))
+                addView(label("Test these first to see what the projector accepts.", 13f, p.muted),
+                    lp().margins(t = 4, b = 10))
+                addView(hbox {
+                    addView(pill("TV power", BtnStyle.SECONDARY, Glyph.Shape.POWER) {
+                        confirm("Send TV power?", "This may turn the projector off or attempt to wake it.",
+                            "Send") {
+                            val ok = TvManager.power(this@MainActivity)
+                            toast(if (ok) "Power command sent. Check TV." else "Could not reach TV. Check connection.")
+                        }
+                    }, lp(0, weight = 1f).margins(r = 8))
+                    addView(pill("TV settings", BtnStyle.PRIMARY, Glyph.Shape.MENU) {
+                        val ok = TvManager.connected &&
+                            TvManager.key(com.hand.bridge.atv.Keys.SETTINGS)
+                        toast(if (ok) "Settings key sent. Check TV." else "TV not connected.")
+                    }, lp(0, weight = 1f))
+                })
+                addView(pill("Try App menu", BtnStyle.SECONDARY, Glyph.Shape.MENU) {
+                    val ok = TvManager.connected && TvManager.key(com.hand.bridge.atv.Keys.MENU)
+                    toast(if (ok) "App Menu key sent; the projector may ignore it."
+                        else "TV not connected.")
+                }, lp().margins(t = 9))
+                addView(label("App Menu works only in apps that handle it. TV Settings and the JMGO picture menu are different commands.",
+                    12f, p.muted), lp().margins(t = 10))
+            })
+        }
         page.addView(pill("Edit this gesture", BtnStyle.PRIMARY, Glyph.Shape.GESTURE) {
             val event = AirGestures.events().firstOrNull { it.gesture.isNotBlank() && it.gesture != "test" }
             if (event == null) editFor(GestureProfiles.active(this))
