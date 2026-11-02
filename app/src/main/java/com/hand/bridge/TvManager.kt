@@ -60,6 +60,23 @@ object TvManager {
     private var lastSliderCode: Int? = null
     private var lastSliderAt = 0L
     private const val HOLD_IDLE_MS = 340L
+    // One finger-slide step = 3 D-pad presses. Pump presses at a rate Android TV
+    // can recognize, rather than firing all three within ~24 milliseconds.
+    private const val SLIDER_PULSE_MS = 65L
+    private const val MAX_SLIDER_PULSES = 24
+    private var sliderQueued = 0
+    private var sliderQueuedCode: Int? = null
+    private var sliderPump: Runnable? = null
+    @Volatile var lastSliderStatus = "No TV slider command yet"
+        private set
+
+    /** Stop old directional repeats when switching outputs or losing the TV. */
+    @Synchronized private fun stopSliderPump() {
+        sliderPump?.let { main.removeCallbacks(it) }
+        sliderPump = null
+        sliderQueued = 0
+        sliderQueuedCode = null
+    }
 
     @Synchronized private fun releaseHold() {
         endHold?.let { main.removeCallbacks(it) }
@@ -102,14 +119,52 @@ object TvManager {
 
 
     /**
-     * Directional band sliders need predictable movement per calibrated step. The TV
-     * controls the rate of a native long hold, so instead send short D-pad presses with
-     * brief spacing. Bridge already applies the 3x gain; cap each batch to keep latency
-     * bounded. The on-screen D-pad continues to use real key-down/key-up holds.
+     * Combine fast Air Gestures slider broadcasts and drain them at 65ms intervals.
+     * Without pacing, Android TV may ignore repeated D-pad keys sent 12ms apart.
+     * The bridge already multiplies the calibrated step count by 3. Never let old
+     * slider presses pile up after switching direction or disconnecting the TV.
      */
     @Synchronized fun sliderKeys(code: Int, count: Int): Boolean {
         endPointerGesture()
-        return keys(code, count.coerceIn(1, 18), 12L)
+        if (remote?.ready != true || !isTarget()) {
+            lastSliderStatus = "TV not connected or not selected; no slider keys sent"
+            appCtx?.let { reconnectAuto(it) }
+            return false
+        }
+        if (sliderQueuedCode != code) {
+            sliderQueued = 0
+            sliderQueuedCode = code
+        }
+        val requested = count.coerceIn(1, 18)
+        sliderQueued = (sliderQueued + requested).coerceAtMost(MAX_SLIDER_PULSES)
+        lastSliderStatus = "Slider queued $requested D-pad keys (3x); pending $sliderQueued; 65ms pacing"
+        if (sliderPump == null) {
+            val pump = object : Runnable {
+                override fun run() {
+                    val currentCode: Int
+                    synchronized(this@TvManager) {
+                        if (sliderQueued <= 0 || remote?.ready != true || !isTarget()) {
+                            stopSliderPump()
+                            return
+                        }
+                        currentCode = sliderQueuedCode ?: run { stopSliderPump(); return }
+                        sliderQueued--
+                    }
+                    val ok = remote?.key(currentCode, Remote.DIR_SHORT) == true
+                    if (!ok) {
+                        synchronized(this@TvManager) {
+                            lastSliderStatus = "TV rejected or disconnected during slider send"
+                            stopSliderPump()
+                        }
+                        return
+                    }
+                    main.postDelayed(this, SLIDER_PULSE_MS)
+                }
+            }
+            sliderPump = pump
+            main.post(pump)
+        }
+        return true
     }
 
     /**
@@ -199,12 +254,14 @@ object TvManager {
 
     fun disconnect(ctx: Context) {
         Prefs.setSelectedTv(ctx, null)
+        stopSliderPump()
         releaseHold()
         wanted = false
         io.execute { runCatching { dropConnection() }; set(TvState.IDLE) }
     }
 
     private fun dropConnection() {
+        stopSliderPump()
         releaseHold()
         val r = remote
         remote = null
