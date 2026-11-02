@@ -60,22 +60,20 @@ object TvManager {
     private var lastSliderCode: Int? = null
     private var lastSliderAt = 0L
     private const val HOLD_IDLE_MS = 340L
-    // One finger-slide step = 3 D-pad presses. Pump presses at a rate Android TV
-    // can recognize, rather than firing all three within ~24 milliseconds.
-    private const val SLIDER_PULSE_MS = 65L
-    private const val MAX_SLIDER_PULSES = 24
-    private var sliderQueued = 0
-    private var sliderQueuedCode: Int? = null
-    private var sliderPump: Runnable? = null
-    @Volatile var lastSliderStatus = "No TV slider command yet"
+    /**
+     * The band streams slider updates roughly every 250ms. Stop holding after
+     * silence so a lost or interrupted stream cannot leave the cursor moving.
+     * Remote v2 has no pointer-speed parameter; this is only an idle deadline.
+     */
+    private const val SLIDER_IDLE_RELEASE_MS = 650L
+    private var sliderRelease: Runnable? = null
+    @Volatile var lastSliderStatus = "No TV slider hold yet"
         private set
 
-    /** Stop old directional repeats when switching outputs or losing the TV. */
-    @Synchronized private fun stopSliderPump() {
-        sliderPump?.let { main.removeCallbacks(it) }
-        sliderPump = null
-        sliderQueued = 0
-        sliderQueuedCode = null
+    @Synchronized private fun stopSliderHold() {
+        sliderRelease?.let { main.removeCallbacks(it) }
+        sliderRelease = null
+        releaseHold()
     }
 
     @Synchronized private fun releaseHold() {
@@ -119,51 +117,42 @@ object TvManager {
 
 
     /**
-     * Combine fast Air Gestures slider broadcasts and drain them at 65ms intervals.
-     * Without pacing, Android TV may ignore repeated D-pad keys sent 12ms apart.
-     * The bridge already multiplies the calibrated step count by 3. Never let old
-     * slider presses pile up after switching direction or disconnecting the TV.
+     * Native Android TV long press: START_LONG on the first slide, remain held
+     * across incoming slider steps, and END_LONG on inactivity or direction change.
+     * Never substitute repeated SHORT events: they do not move the browser cursor.
      */
     @Synchronized fun sliderKeys(code: Int, count: Int): Boolean {
-        endPointerGesture()
         if (remote?.ready != true || !isTarget()) {
-            lastSliderStatus = "TV not connected or not selected; no slider keys sent"
+            lastSliderStatus = "Cannot hold arrow: projector disconnected or not selected"
+            stopSliderHold()
             appCtx?.let { reconnectAuto(it) }
             return false
         }
-        if (sliderQueuedCode != code) {
-            sliderQueued = 0
-            sliderQueuedCode = code
-        }
-        val requested = count.coerceIn(1, 18)
-        sliderQueued = (sliderQueued + requested).coerceAtMost(MAX_SLIDER_PULSES)
-        lastSliderStatus = "Slider queued $requested D-pad keys (3x); pending $sliderQueued; 65ms pacing"
-        if (sliderPump == null) {
-            val pump = object : Runnable {
-                override fun run() {
-                    val currentCode: Int
-                    synchronized(this@TvManager) {
-                        if (sliderQueued <= 0 || remote?.ready != true || !isTarget()) {
-                            stopSliderPump()
-                            return
-                        }
-                        currentCode = sliderQueuedCode ?: run { stopSliderPump(); return }
-                        sliderQueued--
-                    }
-                    val ok = remote?.key(currentCode, Remote.DIR_SHORT) == true
-                    if (!ok) {
-                        synchronized(this@TvManager) {
-                            lastSliderStatus = "TV rejected or disconnected during slider send"
-                            stopSliderPump()
-                        }
-                        return
-                    }
-                    main.postDelayed(this, SLIDER_PULSE_MS)
-                }
+        if (heldKey != code) {
+            stopSliderHold()
+            if (remote?.key(code, Remote.DIR_START_LONG) != true) {
+                lastSliderStatus = "Could not send START_LONG"
+                return false
             }
-            sliderPump = pump
-            main.post(pump)
+            heldKey = code
+            lastSliderStatus = "START_LONG sent for arrow $code"
+            Trace.add("tv: native slider hold start arrow=$code")
+        } else {
+            lastSliderStatus = "Arrow $code is being held (last band update $count steps)"
         }
+        sliderRelease?.let { main.removeCallbacks(it) }
+        val release = Runnable {
+            synchronized(this@TvManager) {
+                if (heldKey == code) {
+                    releaseHold()
+                    lastSliderStatus = "END_LONG sent after slider became idle"
+                    Trace.add("tv: native slider hold released arrow=$code")
+                }
+                sliderRelease = null
+            }
+        }
+        sliderRelease = release
+        main.postDelayed(release, SLIDER_IDLE_RELEASE_MS)
         return true
     }
 
@@ -173,19 +162,19 @@ object TvManager {
      * Always release explicitly on touch-up/cancel or when the view is removed.
      */
     @Synchronized fun beginRemoteHold(code: Int): Boolean {
-        releaseHold()
+        stopSliderHold()
         val ok = remote?.key(code, Remote.DIR_START_LONG) == true
         if (ok) heldKey = code
         return ok
     }
 
     @Synchronized fun endRemoteHold(code: Int) {
-        if (heldKey == code) releaseHold()
+        if (heldKey == code) stopSliderHold()
     }
 
     /** Called on touch-pad lift to ensure the TV receives KEY_UP. */
     @Synchronized fun endPointerGesture() {
-        releaseHold()
+        stopSliderHold()
         lastSliderCode = null
         lastSliderAt = 0L
     }
@@ -254,14 +243,14 @@ object TvManager {
 
     fun disconnect(ctx: Context) {
         Prefs.setSelectedTv(ctx, null)
-        stopSliderPump()
+        stopSliderHold()
         releaseHold()
         wanted = false
         io.execute { runCatching { dropConnection() }; set(TvState.IDLE) }
     }
 
     private fun dropConnection() {
-        stopSliderPump()
+        stopSliderHold()
         releaseHold()
         val r = remote
         remote = null
