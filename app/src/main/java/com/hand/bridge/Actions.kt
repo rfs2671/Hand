@@ -48,7 +48,12 @@ object Actions {
         "EVT_INDEX_LEFT_RIGHT_UP" to "RIGHT", "EVT_INDEX_LEFT_RIGHT_DOWN" to "LEFT",
         "EVT_INDEX_UP_DOWN_UP" to "UP", "EVT_INDEX_UP_DOWN_DOWN" to "DOWN",
         "EVT_MIDDLE_LEFT_RIGHT_UP" to "RIGHT", "EVT_MIDDLE_LEFT_RIGHT_DOWN" to "LEFT",
-        "EVT_MIDDLE_UP_DOWN_UP" to "UP", "EVT_MIDDLE_UP_DOWN_DOWN" to "DOWN"
+        "EVT_MIDDLE_UP_DOWN_UP" to "UP", "EVT_MIDDLE_UP_DOWN_DOWN" to "DOWN",
+        // Additional continuous finger sliders exposed by current Air Gestures.
+        "EVT_INDEX_TOWARD_AWAY_UP" to "SCROLL_UP",
+        "EVT_INDEX_TOWARD_AWAY_DOWN" to "SCROLL_DOWN",
+        "EVT_MIDDLE_TOWARD_AWAY_UP" to "SCROLL_UP",
+        "EVT_MIDDLE_TOWARD_AWAY_DOWN" to "SCROLL_DOWN"
     )
 
     /** Mapping key for a dial/slider event: "EVT_INDEX_LEFT_RIGHT" with +3 steps -> "EVT_INDEX_LEFT_RIGHT_UP". */
@@ -63,6 +68,8 @@ object Actions {
         key.endsWith("_LEFT_RIGHT_DOWN") || key.endsWith("_RIGHT_LEFT_UP") -> Action.LEFT
         key.endsWith("_UP_DOWN_UP") || key.endsWith("_DOWN_UP_DOWN") -> Action.UP
         key.endsWith("_UP_DOWN_DOWN") || key.endsWith("_DOWN_UP_UP") -> Action.DOWN
+        key.endsWith("_TOWARD_AWAY_UP") -> Action.SCROLL_UP
+        key.endsWith("_TOWARD_AWAY_DOWN") -> Action.SCROLL_DOWN
         else -> null
     }
 
