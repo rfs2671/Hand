@@ -443,6 +443,10 @@ class MainActivity : Activity() {
         "EVT_INDEX_UP_DOWN_DOWN" -> "Slide index down"
         "EVT_MIDDLE_UP_DOWN_UP" -> "Slide middle up"
         "EVT_MIDDLE_UP_DOWN_DOWN" -> "Slide middle down"
+        "EVT_INDEX_TOWARD_AWAY_UP" -> "Slide index away"
+        "EVT_INDEX_TOWARD_AWAY_DOWN" -> "Slide index toward"
+        "EVT_MIDDLE_TOWARD_AWAY_UP" -> "Slide middle away"
+        "EVT_MIDDLE_TOWARD_AWAY_DOWN" -> "Slide middle toward"
         "EVT_DIAL_UP" -> "Index twist forward"
         "EVT_DIAL_DOWN" -> "Index twist backward"
         "EVT_MIDDLE_DIAL_UP" -> "Middle twist forward"
@@ -456,6 +460,10 @@ class MainActivity : Activity() {
         "EVT_SWIPE_LEFT", "EVT_SWIPE_RIGHT",
         "EVT_INDEX_LEFT_RIGHT_UP", "EVT_INDEX_LEFT_RIGHT_DOWN",
         "EVT_MIDDLE_LEFT_RIGHT_UP", "EVT_MIDDLE_LEFT_RIGHT_DOWN",
+        "EVT_INDEX_UP_DOWN_UP", "EVT_INDEX_UP_DOWN_DOWN",
+        "EVT_MIDDLE_UP_DOWN_UP", "EVT_MIDDLE_UP_DOWN_DOWN",
+        "EVT_INDEX_TOWARD_AWAY_UP", "EVT_INDEX_TOWARD_AWAY_DOWN",
+        "EVT_MIDDLE_TOWARD_AWAY_UP", "EVT_MIDDLE_TOWARD_AWAY_DOWN",
         "EVT_DIAL_UP", "EVT_DIAL_DOWN"
     )
 
@@ -635,6 +643,48 @@ class MainActivity : Activity() {
                 }, lp().margins(t = 9))
                 addView(label("App Menu works only in apps that handle it. TV Settings and the JMGO picture menu are different commands.",
                     12f, p.muted), lp().margins(t = 10))
+            })
+        }
+        if (Prefs.selectedTv(this) != null) {
+            page.addView(card {
+                addView(label("Test finger sliders", 17f, p.text, bold = true))
+                addView(label("Try a 3-step move, then slide your finger.", 13f, p.muted),
+                    lp().margins(t = 5, b = 10))
+                addView(hbox {
+                    addView(pill("Move left ×3", BtnStyle.SECONDARY) {
+                        val ok = TvManager.sliderKeys(com.hand.bridge.atv.Keys.LEFT, 3)
+                        toast(if (ok) "Sent 3 moves left. Check TV." else "TV not connected.")
+                    }, lp(0, weight = 1f).margins(r = 8))
+                    addView(pill("Move right ×3", BtnStyle.SECONDARY) {
+                        val ok = TvManager.sliderKeys(com.hand.bridge.atv.Keys.RIGHT, 3)
+                        toast(if (ok) "Sent 3 moves right. Check TV." else "TV not connected.")
+                    }, lp(0, weight = 1f))
+                })
+                addView(pill("Copy slider details", BtnStyle.TEXT) {
+                    val last = AirGestures.events().firstOrNull { e ->
+                        e.gesture.contains("left_right") || e.gesture.contains("up_down") ||
+                            e.gesture.contains("toward_away") || e.gesture.contains("drag")
+                    }
+                    val raw = if (last != null) {
+                        val key = "EVT_" + last.gesture.trim().uppercase()
+                            .replace(' ', '_').replace('-', '_') +
+                            if (last.steps > 0) "_UP" else if (last.steps < 0) "_DOWN" else ""
+                        "Band slider: ${last.gesture}, steps=${last.steps}, " +
+                            "received=${System.currentTimeMillis() - last.at}ms ago, " +
+                            "mapped=${GestureProfiles.resolve(this@MainActivity, DeviceProfile.TV, key)}, " +
+                            "note=${last.note ?: "accepted"}"
+                    } else "No slider broadcast received from Air Gestures."
+                    val details = "Hand Bridge TV slider diagnostic\n" + raw + "\n" +
+                        "Band status: ${AirGestures.deliveryStatus(this@MainActivity)}\n" +
+                        "Route: ${OutputRouter.diagnostic(this@MainActivity)}\n" +
+                        "TV state: ${TvManager.state}, connected=${TvManager.connected}\n" +
+                        "TV slider: ${TvManager.lastSliderStatus}\n" +
+                        "3x movement configured, paced 65ms per key.\n" +
+                        "Band profile must broadcast continuous slides with signed steps."
+                    getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("TV slider details", details))
+                    toast("Slider details copied")
+                }, lp().margins(t = 8))
             })
         }
         page.addView(pill("Edit this gesture", BtnStyle.PRIMARY, Glyph.Shape.GESTURE) {
