@@ -174,7 +174,7 @@ object AirGestures {
             }
         }
         lastRoute = when {
-            action == Action.NONE -> "$key: no Car-mode mapping"
+            action == Action.NONE -> "$key: no mapping for ${GestureProfiles.active(ctx).title}"
             sent == false -> "$key → ${action.label}: received but not dispatched (bridge/output unavailable)"
             sent == null -> "$key → ${action.label}: only observed; Test send disabled"
             else -> "$key → ${action.label}: handed to output, device response not confirmed"
