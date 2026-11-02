@@ -5,7 +5,7 @@ enum class Action(val label: String) {
     UP("Up"), DOWN("Down"), LEFT("Left"), RIGHT("Right"),
     SELECT("Select / left click"),
     RIGHT_CLICK("Right click"),
-    BACK("Back"), HOME("Home"), MENU("Menu"),
+    BACK("Back"), HOME("Home"), MENU("App menu"), SETTINGS("Projector settings"),
     PLAY_PAUSE("Play / pause"), NEXT("Next track"), PREV("Previous track"),
     SEEK_FORWARD("Seek forward in song"), SEEK_BACK("Seek backward in song"),
     VOL_UP("Volume up"), VOL_DOWN("Volume down"), MUTE("Mute"),
