@@ -419,7 +419,9 @@ class MainActivity : Activity() {
         Action.RIGHT_CLICK -> "Right click"
         Action.ZOOM_IN -> "Zoom in"
         Action.ZOOM_OUT -> "Zoom out"
-        Action.POWER -> "Power"
+        Action.POWER -> "TV On / Off"
+        Action.MENU -> "App menu"
+        Action.SETTINGS -> "TV settings"
         else -> action.label
     }
 
@@ -450,7 +452,7 @@ class MainActivity : Activity() {
 
     private val simpleGestureKeys get() = listOf(
         "EVT_INDEX_TAP", "EVT_MIDDLE_TAP",
-        "EVT_INDEX_DOUBLE", "EVT_MIDDLE_DOUBLE",
+        "EVT_INDEX_DOUBLE", "EVT_MIDDLE_DOUBLE", "EVT_INDEX_HOLD", "EVT_INDEX_TRIPLE",
         "EVT_SWIPE_LEFT", "EVT_SWIPE_RIGHT",
         "EVT_INDEX_LEFT_RIGHT_UP", "EVT_INDEX_LEFT_RIGHT_DOWN",
         "EVT_MIDDLE_LEFT_RIGHT_UP", "EVT_MIDDLE_LEFT_RIGHT_DOWN",
@@ -1394,7 +1396,7 @@ class MainActivity : Activity() {
         Action.RIGHT_CLICK -> Glyph.Shape.MOUSE
         Action.BACK -> Glyph.Shape.BACK
         Action.HOME -> Glyph.Shape.HOME
-        Action.MENU -> Glyph.Shape.MENU
+        Action.MENU, Action.SETTINGS -> Glyph.Shape.MENU
         Action.ANSWER_CALL -> Glyph.Shape.PHONE
         Action.END_CALL -> Glyph.Shape.PHONE
         Action.PLAY_PAUSE -> Glyph.Shape.PLAY_PAUSE
@@ -1805,7 +1807,7 @@ class MainActivity : Activity() {
             addView(row(arrow(Action.LEFT, Glyph.Shape.LEFT), key(Action.SELECT, Glyph.Shape.CHECK, accent = true), arrow(Action.RIGHT, Glyph.Shape.RIGHT)), lp().margins(t = 8, b = 8))
             addView(row(spacer(), arrow(Action.DOWN, Glyph.Shape.DOWN), spacer()))
             addView(divider(), lp(h = Ui.dp(1)).margins(t = 16, b = 16))
-            addView(row(key(Action.BACK, Glyph.Shape.BACK, "Back"), key(Action.HOME, Glyph.Shape.HOME, "Home"), key(Action.MENU, Glyph.Shape.MENU, "Menu")))
+            addView(row(key(Action.BACK, Glyph.Shape.BACK, "Back"), key(Action.HOME, Glyph.Shape.HOME, "Home"), key(Action.MENU, Glyph.Shape.MENU, "App menu")))
         })
 
         // Media
@@ -1813,7 +1815,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             addView(row(key(Action.PREV, Glyph.Shape.PREV, "Previous"), key(Action.PLAY_PAUSE, Glyph.Shape.PLAY_PAUSE, "Play"), key(Action.NEXT, Glyph.Shape.NEXT, "Next")))
             addView(row(key(Action.VOL_DOWN, Glyph.Shape.VOL_DOWN, "Vol −"), key(Action.MUTE, Glyph.Shape.MUTE, "Mute"), key(Action.VOL_UP, Glyph.Shape.VOL_UP, "Vol +")), lp().margins(t = 12))
-            addView(row(key(Action.ZOOM_OUT, Glyph.Shape.DOT, "Zoom −"), spacer(), key(Action.ZOOM_IN, Glyph.Shape.PLUS, "Zoom +")), lp().margins(t = 12))
+            addView(row(key(Action.ZOOM_OUT, Glyph.Shape.DOT, "Zoom −"), key(Action.SETTINGS, Glyph.Shape.MENU, "Settings"), key(Action.ZOOM_IN, Glyph.Shape.PLUS, "Zoom +")), lp().margins(t = 12))
             addView(label("Zoom keys work only where the receiving app handles zoom commands. They do not change the JMGO projector's physical image size.", 12f, p.muted))
             addView(row(spacer(), key(Action.POWER, Glyph.Shape.POWER, "Power"), spacer()), lp().margins(t = 12))
         })
