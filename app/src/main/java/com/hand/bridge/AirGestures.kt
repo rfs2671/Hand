@@ -165,8 +165,14 @@ object AirGestures {
         Trace.add("air: $key${if (n > 1) " x$n" else ""} -> $action")
         var sent: Boolean? = null
         if (!testing || sendWhileTesting) {
-            val continuous = steps != 0 &&
-                (action in Actions.directional || action == Action.SCROLL_UP || action == Action.SCROLL_DOWN)
+            // Air Gestures may emit a continuous slider with signed steps OR a
+            // direction-specific drag event with zero steps. Both must act like
+            // holding a TV arrow, not a series of short D-pad taps.
+            val directional = action in Actions.directional ||
+                action == Action.SCROLL_UP || action == Action.SCROLL_DOWN
+            val dragHold = steps == 0 && "_DRAG_" in key && directional &&
+                TvManager.selectedTarget(ctx)
+            val continuous = directional && (steps != 0 || dragHold)
             sent = when {
                 continuous -> Bridge.handleContinuous(ctx, key, n)
                 n > 1 -> Bridge.handleSteps(ctx, key, n)
