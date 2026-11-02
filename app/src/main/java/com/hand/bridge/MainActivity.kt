@@ -597,6 +597,31 @@ class MainActivity : Activity() {
         return {}
     }
 
+    /** A real hold test: finger down sends START_LONG; lifting sends END_LONG. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun tvHoldTestButton(name: String, code: Int): View {
+        val control = pill(name, BtnStyle.SECONDARY, Glyph.Shape.GESTURE) {}
+        control.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    view.parent?.requestDisallowInterceptTouchEvent(true)
+                    val ok = TvManager.beginRemoteHold(code)
+                    if (!ok) toast("Cannot hold arrow: connect the projector first")
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    TvManager.endRemoteHold(code)
+                    view.parent?.requestDisallowInterceptTouchEvent(false)
+                    if (event.actionMasked == MotionEvent.ACTION_UP) view.performClick()
+                    true
+                }
+                else -> true
+            }
+        }
+        control.contentDescription = "Press and hold $name, then release"
+        return control
+    }
+
     private fun simpleTestPage(): () -> Unit {
         heading("Do a gesture")
         val message = label("", 24f, p.text, bold = true)
@@ -647,18 +672,14 @@ class MainActivity : Activity() {
         }
         if (Prefs.selectedTv(this) != null) {
             page.addView(card {
-                addView(label("Test finger sliders", 17f, p.text, bold = true))
-                addView(label("Try a 3-step move, then slide your finger.", 13f, p.muted),
+                addView(label("Test a real arrow hold", 17f, p.text, bold = true))
+                addView(label("Press and HOLD a button. Release to stop the cursor, then try your wristband slider.", 13f, p.muted),
                     lp().margins(t = 5, b = 10))
                 addView(hbox {
-                    addView(pill("Move left ×3", BtnStyle.SECONDARY) {
-                        val ok = TvManager.sliderKeys(com.hand.bridge.atv.Keys.LEFT, 3)
-                        toast(if (ok) "Sent 3 moves left. Check TV." else "TV not connected.")
-                    }, lp(0, weight = 1f).margins(r = 8))
-                    addView(pill("Move right ×3", BtnStyle.SECONDARY) {
-                        val ok = TvManager.sliderKeys(com.hand.bridge.atv.Keys.RIGHT, 3)
-                        toast(if (ok) "Sent 3 moves right. Check TV." else "TV not connected.")
-                    }, lp(0, weight = 1f))
+                    addView(tvHoldTestButton("Hold left", com.hand.bridge.atv.Keys.LEFT),
+                        lp(0, weight = 1f).margins(r = 8))
+                    addView(tvHoldTestButton("Hold right", com.hand.bridge.atv.Keys.RIGHT),
+                        lp(0, weight = 1f))
                 })
                 addView(pill("Copy slider details", BtnStyle.TEXT) {
                     val last = AirGestures.events().firstOrNull { e ->
@@ -679,7 +700,8 @@ class MainActivity : Activity() {
                         "Route: ${OutputRouter.diagnostic(this@MainActivity)}\n" +
                         "TV state: ${TvManager.state}, connected=${TvManager.connected}\n" +
                         "TV slider: ${TvManager.lastSliderStatus}\n" +
-                        "3x movement configured, paced 65ms per key.\n" +
+                        "Native START_LONG hold; END_LONG after 650ms without updates.\n" +
+                        "The TV controls cursor repeat speed; no 3x speed setting exists in Remote v2.\n" +
                         "Band profile must broadcast continuous slides with signed steps."
                     getSystemService(android.content.ClipboardManager::class.java)
                         ?.setPrimaryClip(android.content.ClipData.newPlainText("TV slider details", details))
