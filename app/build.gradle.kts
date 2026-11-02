@@ -13,7 +13,7 @@ android {
         targetSdk = 34
         // CI run number, so every published APK installs as an update over the previous one.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "0.5.0-simple"
+        versionName = "0.5.1-tv-controls"
     }
 
     // One permanent key (from CI secrets) keeps updates installable. Without it the build falls
