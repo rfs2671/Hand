@@ -117,6 +117,9 @@ object Keys {
     const val POWER = 26
     const val ENTER = 66
     const val MENU = 82
+    // Standard Android TV Remote v2 key code. May open Android settings;
+    // JMGO's proprietary projector overlay is not guaranteed to respond.
+    const val SETTINGS = 176
     const val SEARCH = 84
     const val PLAY_PAUSE = 85
     const val NEXT = 87
