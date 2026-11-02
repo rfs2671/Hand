@@ -105,7 +105,8 @@ object Bridge {
 
     private fun isDirectionalSlider(input: String): Boolean =
         input.startsWith("EVT_") && (
-            "_LEFT_RIGHT_" in input || "_UP_DOWN_" in input || "_TOWARD_AWAY_" in input
+            "_LEFT_RIGHT_" in input || "_UP_DOWN_" in input ||
+            "_TOWARD_AWAY_" in input || "_DRAG_" in input
         )
 
     /**
