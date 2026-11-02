@@ -101,8 +101,7 @@ object Bridge {
         return any
     }
 
-    /** Increase calibrated directional slider travel without affecting taps, volume, or dials. */
-    private const val SLIDER_DIRECTION_GAIN = 3
+    /** A slider must hold the remote arrow; TV firmware decides the repeat speed. */
 
     private fun isDirectionalSlider(input: String): Boolean =
         input.startsWith("EVT_") && (
@@ -110,9 +109,9 @@ object Bridge {
         )
 
     /**
-     * Directional finger slides move three times as far per reported step.
-     * TVs receive individually paced D-pad presses rather than their fixed-rate long-key repeat.
-     * Other continuous controls retain the original hold/repeat behavior.
+     * Directional slides start one native TV arrow hold, rather than three taps.
+     * Android TV v2 has no native repeat-speed setting; the projector decides speed.
+     * Other continuous controls retain original behavior.
      */
     fun handleContinuous(ctx: Context, input: String, steps: Int): Boolean {
         lastInput = input
@@ -124,7 +123,7 @@ object Bridge {
         if (Prefs.carMode(ctx) && (action == Action.SEEK_FORWARD || action == Action.SEEK_BACK))
             return CarMedia.seek(ctx, if (action == Action.SEEK_FORWARD) steps else -steps)
         val slider = isDirectionalSlider(input)
-        val count = if (slider) steps.coerceIn(1, 6) * SLIDER_DIRECTION_GAIN else steps
+        val count = steps.coerceIn(1, 6)
         if (TvManager.selectedTarget(ctx)) {
             val code = when (action) {
                 Action.SCROLL_UP -> Keys.UP
