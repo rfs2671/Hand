@@ -147,6 +147,7 @@ object Bridge {
             Action.RIGHT -> Keys.RIGHT
             Action.SELECT -> Keys.CENTER
             Action.RIGHT_CLICK, Action.MENU -> Keys.MENU
+            Action.SETTINGS -> Keys.SETTINGS
             Action.BACK -> Keys.BACK
             Action.HOME -> Keys.HOME
             Action.PLAY_PAUSE -> Keys.PLAY_PAUSE
@@ -182,6 +183,7 @@ object Bridge {
             Action.BACK -> h.consumer(HidBridge.C_AC_BACK)
             Action.HOME -> h.consumer(HidBridge.C_AC_HOME)
             Action.MENU -> h.consumer(HidBridge.C_MENU)
+            Action.SETTINGS -> return false // dedicated Android TV settings key; not a Bluetooth HID consumer key
             Action.PLAY_PAUSE -> h.consumer(HidBridge.C_PLAY_PAUSE)
             Action.NEXT -> h.consumer(HidBridge.C_NEXT)
             Action.PREV -> h.consumer(HidBridge.C_PREV)
